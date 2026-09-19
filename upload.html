@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#080b0c" />
+<title>Up Phim - PhimHay</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect x=%272%27 y=%274%27 width=%2720%27 height=%2716%27 rx=%275%27 fill=%27%23e50914%27/%3E%3Cpath d=%27M10 9.2v5.6L14.8 12z%27 fill=%27%23fff%27/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="css/style.css?v=3" />
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+.drop{border:2px dashed var(--line2);border-radius:16px;padding:38px 20px;text-align:center;background:var(--bg2);cursor:pointer;transition:.2s}
+.drop:hover,.drop.over{border-color:#fff;background:var(--surface2)}
+.drop input{display:none}
+.progress{height:12px;background:var(--bg2);border-radius:999px;overflow:hidden;margin-top:12px;border:1px solid var(--line2)}
+.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brand),var(--star));transition:.15s}
+.vrow{display:flex;gap:12px;align-items:center;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.vrow video{width:96px;height:54px;background:#000;border-radius:8px;object-fit:cover}
+.vrow .grow{flex:1;min-width:0}
+.vrow .grow b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vrow small{color:var(--muted)}
+.vrow .rowbtns{display:flex;gap:6px;flex-wrap:wrap}
+.mini{background:rgba(255,255,255,.08);border:1px solid var(--line2);color:#fff;padding:7px 11px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700}
+.mini.danger{background:rgba(255,80,80,.12);border-color:rgba(255,80,80,.35);color:#ffb3b3}
+.linkbox{background:#000;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;margin-top:12px;word-break:break-all;font-size:14px}
+.linkbox b{color:var(--star)}
+</style>
+</head>
+<body class="no-nav">
+<header class="header">
+  <div class="container header-inner">
+    <a href="index.html" class="logo"><svg class="logo-mark" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="5" fill="#e50914"/><path d="M10 9.2v5.6L14.8 12z" fill="#fff"/></svg><span>Phim</span>Hay</a>
+    <nav class="nav"><a href="index.html">Trang chủ</a><a href="upload.html" class="active">Up video</a><a href="admin.html">Đăng phim</a></nav>
+  </div>
+</header>
+
+<main class="container" style="max-width:860px;padding-bottom:60px">
+  <div class="section-head"><h2>Up video dung lượng lớn</h2></div>
+  <p style="color:#9aa3c0;margin-bottom:14px">Up thẳng lên server <b>phim.callboy76.live</b> — không giới hạn 2GB/4GB như Telegram. File càng lớn up càng lâu, đừng tắt trang khi đang up. Hỗ trợ MP4 / MKV / WEBM / MOV.</p>
+
+  <div class="panel">
+    <div class="drop" id="drop">
+      <div><svg viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="#8b94c7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V7m0 0L8 11m4-4l4 4"/><path d="M4 18v1a2 2 0 002 2h12a2 2 0 002-2v-1"/></svg></div>
+      <h3>Bấm để chọn video hoặc kéo-thả vào đây</h3>
+      <p style="color:#9aa3c0;font-size:14px;margin-top:6px">Chia nhỏ tự động 10MB/chunk — file 10GB vẫn up được</p>
+      <input type="file" id="fileInput" accept="video/*,.mkv,.mp4,.webm,.mov,.avi" />
+    </div>
+    <div id="upStatus" style="margin-top:14px"></div>
+    <div class="progress" id="progWrap" style="display:none"><i id="progBar"></i></div>
+    <div id="doneBox"></div>
+  </div>
+
+  <div class="panel" style="margin-top:18px">
+    <h3>Video đã up (<span id="vCount">0</span>)</h3>
+    <div id="vList"></div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const CHUNK = 10 * 1024 * 1024; // 10MB
+const fmt = b => b > 1073741824 ? (b/1073741824).toFixed(2)+' GB' : b > 1048576 ? (b/1048576).toFixed(1)+' MB' : Math.round(b/1024)+' KB';
+
+$('drop').onclick = e => { if (e.target.tagName !== 'BUTTON') $('fileInput').click(); };
+['dragover','dragenter'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave','drop'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) startUpload(f); });
+$('fileInput').onchange = e => { if (e.target.files[0]) startUpload(e.target.files[0]); };
+
+async function startUpload(file) {
+  const uploadId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const total = Math.ceil(file.size / CHUNK);
+  $('progWrap').style.display = 'block';
+  $('doneBox').innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const blob = file.slice(i * CHUNK, (i + 1) * CHUNK);
+    $('upStatus').innerHTML = `Đang up <b>${file.name}</b> — chunk ${i+1}/${total} (${fmt(file.size)})...`;
+    const url = `/api/upload-chunk?uploadId=${uploadId}&chunkIndex=${i}&totalChunks=${total}&filename=${encodeURIComponent(file.name)}`;
+    const res = await fetch(url, { method: 'POST', body: blob });
+    if (!res.ok) { $('upStatus').innerHTML = `<span style="color:#ff8080">Lỗi up chunk ${i+1}: HTTP ${res.status}</span>`; return; }
+    const data = await res.json();
+    $('progBar').style.width = Math.round(((i+1)/total)*100) + '%';
+    if (data.done) {
+      const full = location.origin + data.url;
+      $('upStatus').innerHTML = `Up xong <b>${data.name}</b> (${fmt(file.size)})`;
+      $('doneBox').innerHTML = `<div class="linkbox">Link video:<br><b>${full}</b><br><br>
+        <button class="mini" onclick="navigator.clipboard.writeText('${full}');this.textContent='Đã copy!'">Copy link</button>
+        <button class="mini" onclick="goAdmin('${full}','${file.name.replace(/'/g,'')}')">Đăng lên web luôn</button></div>`;
+      loadList();
+      return;
+    }
+  }
+}
+
+function goAdmin(videoUrl, fileName) {
+  const title = fileName.replace(/\.[^.]+$/,'').replace(/[_.-]+/g,' ').trim();
+  localStorage.setItem('prefillVideo', JSON.stringify({ videoUrl, title }));
+  location.href = 'admin.html';
+}
+
+async function loadList() {
+  try {
+    const r = await fetch('/api/videos');
+    const d = await r.json();
+    const list = d.videos || [];
+    $('vCount').textContent = list.length;
+    $('vList').innerHTML = list.length ? '' : '<p style="color:#9aa3c0">Chưa có video nào.</p>';
+    list.forEach(v => {
+      const full = location.origin + v.url;
+      const div = document.createElement('div');
+      div.className = 'vrow';
+      div.innerHTML = `<video src="${v.url}" preload="metadata" muted></video>
+        <div class="grow"><b>${v.name}</b><small>${fmt(v.size)} • ${full}</small></div>
+        <div class="rowbtns"><button class="mini">Copy</button><button class="mini" style="background:#fff;border-color:#fff;color:#000">Đăng phim</button><button class="mini danger">Xóa</button></div>`;
+      const [bCopy, bPost, bDel] = div.querySelectorAll('button');
+      bCopy.onclick = () => { navigator.clipboard.writeText(full); bCopy.textContent = 'Đã copy!'; };
+      bPost.onclick = () => goAdmin(full, v.name);
+      bDel.onclick = async () => { if (confirm('Xóa ' + v.name + '?')) { await fetch('/api/videos?name=' + encodeURIComponent(v.name), { method: 'DELETE' }); loadList(); } };
+      $('vList').appendChild(div);
+    });
+  } catch(e) { $('vList').innerHTML = '<p style="color:#ff8080">Chưa kết nối được server upload.</p>'; }
+}
+loadList();
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# Secret: bot token Telegram — KHÔNG commit
+tg-config.json
+
+# Dữ liệu runtime / backup
+*.tar.gz
+*.part
+*.tmp
+data/
+videos/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Test artifacts / node
+node_modules/
+package.json
+package-lock.json
+output.json
+*.png
+test_*.js
+run_*.js
+run_*.py

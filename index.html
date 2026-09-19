@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#080b0c" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>PhimHay - Website Xem Phim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect x=%272%27 y=%274%27 width=%2720%27 height=%2716%27 rx=%275%27 fill=%27%23e50914%27/%3E%3Cpath d=%27M10 9.2v5.6L14.8 12z%27 fill=%27%23fff%27/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="css/style.css?v=3" />
+</head>
+<body>
+<a class="skip-link" href="#main">Bỏ qua điều hướng</a>
+
+<header class="topbar" id="topbar">
+  <div class="container topbar-inner">
+    <a href="#/" class="logo" aria-label="PhimHay - Trang chủ"><svg class="logo-mark" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="5" fill="#e50914"/><path d="M10 9.2v5.6L14.8 12z" fill="#fff"/></svg><span>Phim</span>Hay</a>
+    <nav class="desk-nav" aria-label="Điều hướng chính">
+      <a href="#/" data-route="home">Trang chủ</a>
+      <a href="#/movies" data-route="movies">Phim</a>
+      <a href="#/new" data-route="new">Mới cập nhật</a>
+      <a href="#/bookmarks" data-route="bookmarks">Đã lưu</a>
+    </nav>
+    <div class="topbar-actions">
+      <a href="#/search" class="icon-btn desk-only" aria-label="Tìm kiếm" data-route="search"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.8-3.8"/></svg></a>
+      <a href="#/settings" class="icon-btn desk-only" aria-label="Cài đặt" data-route="settings"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></a>
+      <a href="admin.html" class="btn btn-ghost btn-sm desk-only">+ Đăng phim</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <!-- HOME -->
+  <section class="view" id="view-home" aria-label="Trang chủ">
+    <div class="hero" id="hero" hidden>
+      <div class="hero-bg" id="heroBg"></div>
+      <div class="hero-content">
+        <span class="kicker">Nổi bật</span>
+        <h1 id="heroTitle"></h1>
+        <div class="meta" id="heroMeta"></div>
+        <p id="heroDesc"></p>
+        <div class="hero-actions">
+          <a class="btn btn-play btn-lg" id="heroPlay" href="#"><svg viewBox="0 0 24 24" width="18" height="18" fill="#000" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>Xem ngay</a>
+          <a class="btn btn-ghost btn-lg" id="heroInfo" href="#">Chi tiết</a>
+        </div>
+      </div>
+    </div>
+    <div class="container" id="homeRows"></div>
+  </section>
+
+  <!-- MOVIES -->
+  <section class="view" id="view-movies" aria-label="Phim" hidden>
+    <div class="container">
+      <div class="page-head"><h1 id="moviesTitle">Tất cả phim</h1><span class="count" id="moviesCount"></span></div>
+      <div class="chips" id="genreBar" role="tablist" aria-label="Thể loại"></div>
+      <div class="grid" id="movieGrid"></div>
+      <div id="moviesEmpty"></div>
+    </div>
+  </section>
+
+  <!-- NEW (Telegram feed) -->
+  <section class="view" id="view-new" aria-label="Mới cập nhật" hidden>
+    <div class="container">
+      <div class="page-head"><h1>Mới cập nhật</h1><span class="count status" id="newStatus"></span></div>
+      <div id="newBody"></div>
+    </div>
+  </section>
+
+  <!-- BOOKMARKS -->
+  <section class="view" id="view-bookmarks" aria-label="Đã lưu" hidden>
+    <div class="container">
+      <div class="page-head"><h1>Đã lưu</h1><span class="count" id="bookmarkCount"></span></div>
+      <div id="bookmarkBody"></div>
+    </div>
+  </section>
+
+  <!-- SEARCH -->
+  <section class="view" id="view-search" aria-label="Tìm kiếm" hidden>
+    <div class="container">
+      <div class="search-bar">
+        <form id="searchForm" role="search" autocomplete="off">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.8-3.8"/></svg>
+          <input id="searchInput" type="search" placeholder="Tìm phim, thể loại..." aria-label="Tìm kiếm phim" enterkeyhint="search" />
+          <button type="button" class="clear" id="searchClear" aria-label="Xóa tìm kiếm" hidden><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </form>
+      </div>
+      <p class="search-hint" id="searchHint"></p>
+      <div id="searchBody"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="view-settings" aria-label="Cài đặt" hidden>
+    <div class="container">
+      <div class="page-head"><h1>Cài đặt</h1></div>
+      <div id="settingsBody"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer" id="footer">
+  <div class="container">
+    <p>© 2026 PhimHay — Video lưu trên Telegram, web chỉ nhúng link.</p>
+    <p>Thêm phim mới tại trang <a href="admin.html">Đăng phim</a> · <a href="upload.html">Up video</a></p>
+  </div>
+</footer>
+
+<!-- DETAIL PAGE -->
+<section class="detail" id="detail" role="dialog" aria-modal="true" aria-labelledby="dTitle" hidden>
+  <div class="detail-top" id="detailTop">
+    <div class="detail-backdrop" id="dBackdrop"></div>
+    <div class="detail-bar" id="detailBar">
+      <button class="icon-btn" id="dBack" aria-label="Quay lại"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <a href="#/" class="logo" aria-label="PhimHay"><svg class="logo-mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="5" fill="#e50914"/><path d="M10 9.2v5.6L14.8 12z" fill="#fff"/></svg><span>Phim</span>Hay</a>
+    </div>
+    <div class="player-wrap" id="playerWrap" hidden></div>
+  </div>
+  <div class="detail-body">
+    <h1 id="dTitle"></h1>
+    <div class="meta" id="dMeta"></div>
+    <p class="detail-desc" id="dDesc"></p>
+    <div class="detail-actions">
+      <button class="btn btn-play btn-lg" id="dPlay"><svg viewBox="0 0 24 24" width="18" height="18" fill="#000" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg><span>Phát</span></button>
+      <button class="icon-btn" id="dBookmark" aria-label="Lưu phim" aria-pressed="false"></button>
+      <button class="icon-btn" id="dInfo" aria-label="Xem thêm mô tả" aria-expanded="false"></button>
+    </div>
+    <div class="tags" id="dTelegram" style="justify-content:center"></div>
+    <p class="note" id="dNote"></p>
+    <div class="detail-more">
+      <div class="genre-list" id="dGenres"></div>
+      <div id="dRelated"></div>
+    </div>
+  </div>
+</section>
+
+<nav class="bottom-nav" id="bottomNav" aria-label="Điều hướng">
+  <a href="#/" data-route="home" aria-label="Trang chủ"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5L12 3.5l8.5 7V20a1 1 0 01-1 1h-5v-6h-5v6h-5a1 1 0 01-1-1z"/></svg></a>
+  <a href="#/movies" data-route="movies" aria-label="Phim"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg></a>
+  <a href="#/new" data-route="new" aria-label="Mới cập nhật"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M8 3l4 3 4-3"/></svg></a>
+  <a href="#/bookmarks" data-route="bookmarks" aria-label="Đã lưu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h12a1 1 0 011 1V21l-7-4.2L5 21V4.5a1 1 0 011-1z"/></svg></a>
+  <a href="#/search" data-route="search" aria-label="Tìm kiếm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.8-3.8"/></svg></a>
+  <a href="#/settings" data-route="settings" aria-label="Cài đặt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></a>
+</nav>
+
+<button class="to-top" id="toTop" aria-label="Lên đầu trang"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+
+<script src="js/movies.js?v=3"></script>
+<script src="js/data.js?v=3"></script>
+<script src="js/components.js?v=3"></script>
+<script src="js/player.js?v=3"></script>
+<script src="js/app.js?v=3"></script>
+</body>
+</html>
