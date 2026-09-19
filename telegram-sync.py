@@ -32,7 +32,7 @@ OFFSET_FILE = os.path.join(DATA_DIR, "tg-offset.txt")
 THUMB_DIR = os.path.join(DATA_DIR, "thumbs")
 CONFIG_FILE = "/root/web-phim/tg-config.json"
 POLL_INTERVAL = 10
-POSTER_WINDOW = 15 * 60  # ảnh đăng riêng trong 15 phút sau video -> làm poster cho video đó
+POSTER_WINDOW = 15 * 60  # ảnh riêng trong 15 phút sau video -> được phép THAY poster đã có của video đó
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(THUMB_DIR, exist_ok=True)
@@ -234,26 +234,36 @@ def set_poster(feed, item, poster_id):
         os.remove(cached)
     except OSError:
         pass
-    print("poster moi cho: %s" % item.get("title"), flush=True)
+    print("poster moi cho mid=%s: %s" % (item.get("mid"), item.get("title")), flush=True)
     threading.Thread(target=warm_item, args=({"poster_id": poster_id},), daemon=True).start()
 
 
 def attach_poster(post, poster_id, pending_group):
-    """Gắn ảnh vào video: cùng album (media_group_id) hoặc ảnh riêng đăng ngay sau video."""
+    """Gắn ảnh vào video.
+    - Cùng album (media_group_id) -> gắn đúng video đó (ảnh tới trước thì chờ).
+    - Ảnh riêng -> gắn cho video mới nhất nếu nó chưa có poster,
+      hoặc thay poster cũ nếu ảnh đăng trong POSTER_WINDOW sau video.
+    """
+    mid = post.get("message_id")
     gid = post.get("media_group_id")
     feed = load_feed()
     if gid:
         target = next((x for x in feed if x.get("media_group_id") == gid), None)
         if target is None:
             pending_group[gid] = poster_id  # ảnh tới trước video trong album -> chờ video
+            print("anh mid=%s: album %s chua co video, cho..." % (mid, gid), flush=True)
             return
         set_poster(feed, target, poster_id)
         return
     if not feed:
+        print("anh mid=%s: bo qua (chua co video nao)" % mid, flush=True)
         return
     latest = feed[0]
-    if 0 <= post.get("date", 0) - latest.get("date", 0) <= POSTER_WINDOW:
+    in_window = 0 <= post.get("date", 0) - latest.get("date", 0) <= POSTER_WINDOW
+    if not latest.get("poster_id") or in_window:
         set_poster(feed, latest, poster_id)
+        return
+    print("anh mid=%s: bo qua (video moi nhat da co poster, qua %ss)" % (mid, POSTER_WINDOW), flush=True)
 
 
 def poll_loop():
