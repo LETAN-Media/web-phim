@@ -266,6 +266,21 @@ def attach_poster(post, poster_id, pending_group):
     print("anh mid=%s: bo qua (video moi nhat da co poster, qua %ss)" % (mid, POSTER_WINDOW), flush=True)
 
 
+def update_caption(post):
+    """Sửa caption trên Telegram -> đổi tên/mô tả phim trên web (giữ poster, file)."""
+    mid = post.get("message_id")
+    feed = load_feed()
+    item = next((x for x in feed if x.get("mid") == mid), None)
+    if item is None:
+        return
+    title, desc = parse_caption(post.get("caption") or "")
+    if not title:
+        return
+    item["title"], item["desc"] = title, desc
+    save_feed(feed)
+    print("doi ten mid=%s -> %s" % (mid, title), flush=True)
+
+
 def poll_loop():
     offset = 0
     pending_group = {}  # media_group_id -> poster file_id (ảnh album tới trước video)
@@ -280,10 +295,13 @@ def poll_loop():
                 continue
             res = api("getUpdates", {
                 "offset": offset, "timeout": 25,
-                "allowed_updates": json.dumps(["channel_post"]),
+                "allowed_updates": json.dumps(["channel_post", "edited_channel_post"]),
             }, timeout=40)
             for upd in res.get("result", []):
                 offset = max(offset, upd.get("update_id", 0) + 1)
+                if upd.get("edited_channel_post"):
+                    update_caption(upd["edited_channel_post"])
+                    continue
                 post = upd.get("channel_post")
                 if not post:
                     continue
