@@ -104,7 +104,7 @@
     if (Store.tgState === 'unconfigured') return null;
     if (Store.tgState === 'loading') {
       const s = el(`<section class="section">${UI.sectionHeader('Mới cập nhật', { count: 'đang tải...' })}</section>`);
-      s.appendChild(skeletonRow(4, true));
+      s.appendChild(skeletonRow(6));
       return s;
     }
     if (Store.tgState === 'error') {
@@ -113,7 +113,7 @@
     if (!Store.tgMovies.length) {
       return el(`<section class="section">${UI.sectionHeader('Mới cập nhật', { href: '#/new' })}<p class="status">Kênh chưa có video nào.</p></section>`);
     }
-    return mediaRow('Mới cập nhật', Store.tgMovies, { href: '#/new', landscape: true });
+    return mediaRow('Mới cập nhật', Store.tgMovies, { href: '#/new' });
   }
 
   // ===================== MOVIES =====================
@@ -132,9 +132,7 @@
     const list = Store.byGenre(state.genre);
     $('moviesTitle').textContent = state.genre === 'Tất cả' ? 'Tất cả phim' : state.genre;
     $('moviesCount').textContent = `${list.length} phim`;
-    const grid = $('movieGrid');
-    grid.classList.toggle('landscape', list.length > 0 && list.every(m => Store.isTg(m)));
-    fillGrid(grid, list);
+    fillGrid($('movieGrid'), list);
     $('moviesEmpty').innerHTML = '';
     if (list.length) return;
     const e = emptyState({ title: 'Không có phim', text: 'Thể loại này chưa có phim nào.', actionHtml: '<button class="btn btn-ghost" id="moviesReset">Xem tất cả</button>' });
@@ -148,7 +146,7 @@
     const st = $('newStatus');
     body.innerHTML = '';
     st.className = 'count status';
-    if (Store.tgState === 'loading') { st.textContent = 'đang tải...'; body.appendChild(skeletonGrid(6, true)); return; }
+    if (Store.tgState === 'loading') { st.textContent = 'đang tải...'; body.appendChild(skeletonGrid(9)); return; }
     if (Store.tgState === 'unconfigured') {
       st.textContent = 'chưa kết nối kênh';
       body.appendChild(emptyState({ icon: Icons.tv(28), title: 'Chưa kết nối kênh Telegram', text: 'Cấu hình bot_token trong tg-config.json để tự đồng bộ video từ kênh.' }));
@@ -165,8 +163,8 @@
       body.appendChild(emptyState({ icon: Icons.tv(28), title: 'Kênh chưa có video nào', text: 'Up video lên kênh Telegram, web sẽ tự hiển thị trong khoảng 1 phút.' }));
       return;
     }
-    const grid = el('<div class="grid landscape"></div>');
-    fillGrid(grid, Store.tgMovies, { landscape: true });
+    const grid = el('<div class="grid"></div>');
+    fillGrid(grid, Store.tgMovies);
     body.appendChild(grid);
   }
 

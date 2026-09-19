@@ -35,7 +35,6 @@
       videoUrl: x.stream,
       tgNew: i === 0,
       tgDate: date ? date.toLocaleDateString('vi-VN') : '',
-      landscape: true,
     };
   }
 
