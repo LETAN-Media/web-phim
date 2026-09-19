@@ -298,7 +298,9 @@ def poll_loop():
                 "allowed_updates": json.dumps(["channel_post", "edited_channel_post"]),
             }, timeout=40)
             for upd in res.get("result", []):
-                offset = max(offset, upd.get("update_id", 0) + 1)
+                # Luôn lấy theo update_id vừa nhận (không dùng max): dải update_id của server
+                # Bot API local khác dải của api.telegram.org, dùng max sẽ kẹt offset cũ.
+                offset = upd.get("update_id", 0) + 1
                 if upd.get("edited_channel_post"):
                     update_caption(upd["edited_channel_post"])
                     continue
