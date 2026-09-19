@@ -6,7 +6,9 @@ Cách hoạt động:
 - Up video lên kênh (caption dòng đầu = tên phim) -> server tự bắt qua
   Bot API getUpdates (channel_post) -> web hiện phim mới, không cần làm gì thêm.
 - Video phát qua /api/tg-stream (proxy, giấu token, hỗ trợ tua/seek).
-- Poster lấy từ thumbnail của video, cache local.
+- Poster mặc định lấy từ thumbnail của video, cache local.
+- Poster tùy chọn: gởi ảnh cùng album với video, hoặc gởi 1 ảnh riêng trong vòng
+  POSTER_WINDOW giây sau video -> ảnh đó thành poster (nên dùng tỉ lệ dọc 2:3).
 
 Cấu hình: file /root/web-phim/tg-config.json  {"bot_token": "123:ABC..."}
   (KHÔNG copy file này lên /var/www/phim)
@@ -30,6 +32,7 @@ OFFSET_FILE = os.path.join(DATA_DIR, "tg-offset.txt")
 THUMB_DIR = os.path.join(DATA_DIR, "thumbs")
 CONFIG_FILE = "/root/web-phim/tg-config.json"
 POLL_INTERVAL = 10
+POSTER_WINDOW = 15 * 60  # ảnh đăng riêng trong 15 phút sau video -> làm poster cho video đó
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(THUMB_DIR, exist_ok=True)
@@ -117,13 +120,27 @@ def local_path_for(file_id, timeout_wait=180):
     raise RuntimeError("timeout doi file tu Telegram")
 
 
+def sniff_image_ctype(path):
+    try:
+        with open(path, "rb") as f:
+            h = f.read(12)
+    except OSError:
+        return "image/jpeg"
+    if h.startswith(b"\x89PNG"):
+        return "image/png"
+    if h[:4] == b"RIFF" and h[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/jpeg"
+
+
 def warm_item(item):
     """Tải trước video mới về ổ cứng để bấm xem là chạy ngay."""
     try:
         if item.get("file_id"):
             local_path_for(item["file_id"], timeout_wait=900)
-        if item.get("thumb_id"):
-            local_path_for(item["thumb_id"], timeout_wait=120)
+        for key in ("poster_id", "thumb_id"):
+            if item.get(key):
+                local_path_for(item[key], timeout_wait=120)
     except Exception as e:
         print("warm loi:", e, flush=True)
 
@@ -190,13 +207,58 @@ def handle_channel_post(post):
         "desc": desc,
         "file_id": file_id,
         "thumb_id": thumb_id,
+        "poster_id": None,
+        "media_group_id": post.get("media_group_id"),
         "duration": duration,
         "date": post.get("date", 0),
     }
 
 
+def photo_file_id(post):
+    """Lấy file_id ảnh trong bài đăng (Photo lấy size lớn nhất, hoặc File ảnh). Không có -> None."""
+    photos = post.get("photo") or []
+    if photos:
+        best = max(photos, key=lambda p: (p.get("width", 0) * p.get("height", 0), p.get("file_size", 0)))
+        return best.get("file_id")
+    doc = post.get("document") or {}
+    if (doc.get("mime_type") or "").startswith("image/") and doc.get("file_id"):
+        return doc["file_id"]
+    return None
+
+
+def set_poster(feed, item, poster_id):
+    item["poster_id"] = poster_id
+    save_feed(feed)
+    cached = os.path.join(THUMB_DIR, "%s_poster" % item["mid"])
+    try:
+        os.remove(cached)
+    except OSError:
+        pass
+    print("poster moi cho: %s" % item.get("title"), flush=True)
+    threading.Thread(target=warm_item, args=({"poster_id": poster_id},), daemon=True).start()
+
+
+def attach_poster(post, poster_id, pending_group):
+    """Gắn ảnh vào video: cùng album (media_group_id) hoặc ảnh riêng đăng ngay sau video."""
+    gid = post.get("media_group_id")
+    feed = load_feed()
+    if gid:
+        target = next((x for x in feed if x.get("media_group_id") == gid), None)
+        if target is None:
+            pending_group[gid] = poster_id  # ảnh tới trước video trong album -> chờ video
+            return
+        set_poster(feed, target, poster_id)
+        return
+    if not feed:
+        return
+    latest = feed[0]
+    if 0 <= post.get("date", 0) - latest.get("date", 0) <= POSTER_WINDOW:
+        set_poster(feed, latest, poster_id)
+
+
 def poll_loop():
     offset = 0
+    pending_group = {}  # media_group_id -> poster file_id (ảnh album tới trước video)
     try:
         offset = int((open(OFFSET_FILE).read() or "0").strip())
     except Exception:
@@ -213,14 +275,23 @@ def poll_loop():
             for upd in res.get("result", []):
                 offset = max(offset, upd.get("update_id", 0) + 1)
                 post = upd.get("channel_post")
-                if post:
-                    item = handle_channel_post(post)
-                    if item:
-                        feed = [x for x in load_feed() if x.get("mid") != item["mid"]]
-                        feed.insert(0, item)
-                        save_feed(feed[:200])
-                        print("moi tu Telegram: %s" % item["title"], flush=True)
-                        threading.Thread(target=warm_item, args=(item,), daemon=True).start()
+                if not post:
+                    continue
+                poster_id = photo_file_id(post)
+                if poster_id:
+                    attach_poster(post, poster_id, pending_group)
+                    continue
+                item = handle_channel_post(post)
+                if not item:
+                    continue
+                gid = item.get("media_group_id")
+                if gid and gid in pending_group:
+                    item["poster_id"] = pending_group.pop(gid)
+                feed = [x for x in load_feed() if x.get("mid") != item["mid"]]
+                feed.insert(0, item)
+                save_feed(feed[:200])
+                print("moi tu Telegram: %s" % item["title"], flush=True)
+                threading.Thread(target=warm_item, args=(item,), daemon=True).start()
             with open(OFFSET_FILE, "w") as f:
                 f.write(str(offset))
         except Exception as e:
@@ -276,7 +347,9 @@ class Handler(BaseHTTPRequestHandler):
                     "mid": x["mid"], "title": x["title"], "desc": x.get("desc", ""),
                     "date": x.get("date", 0), "duration": x.get("duration", 0),
                     "stream": "/api/tg-stream?mid=%s" % x["mid"],
-                    "thumb": "/api/tg-thumb?mid=%s" % x["mid"],
+                    # đổi query khi có poster để trình duyệt không dùng thumb cũ trong cache
+                    "thumb": "/api/tg-thumb?mid=%s%s" % (x["mid"], "&v=p" if x.get("poster_id") else ""),
+                    "has_poster": bool(x.get("poster_id")),
                 })
             return self.send_json({"ok": True, "configured": bool(bot_token()),
                                     "count": len(items), "items": items})
@@ -304,21 +377,33 @@ class Handler(BaseHTTPRequestHandler):
                 return x
         return None
 
+    def cached_image(self, cached, file_id, timeout_wait=60):
+        """Trả đường dẫn ảnh đã cache; chưa có thì tải từ Telegram. Lỗi -> None."""
+        if os.path.isfile(cached):
+            return cached
+        if not file_id:
+            return None
+        try:
+            src, _ = local_path_for(file_id, timeout_wait=timeout_wait)
+            shutil.copyfile(src, cached)
+            return cached
+        except Exception as e:
+            print("tai anh loi:", e, flush=True)
+            return None
+
     def serve_thumb(self, mid):
         item = self.find_item(mid)
         if not item:
             return self.send_json({"error": "khong thay video"}, 404)
-        cached = os.path.join(THUMB_DIR, "%s.jpg" % item["mid"])
-        if os.path.isfile(cached):
-            return self.send_file(cached, "image/jpeg")
-        if not item.get("thumb_id"):
-            return self.send_json({"error": "video khong co thumbnail"}, 404)
-        try:
-            src, _ = local_path_for(item["thumb_id"], timeout_wait=60)
-            shutil.copyfile(src, cached)
-            return self.send_file(cached, "image/jpeg")
-        except Exception as e:
-            return self.send_json({"error": str(e)}, 502)
+        # Ưu tiên poster người dùng gởi, không có -> thumbnail của video
+        if item.get("poster_id"):
+            p = self.cached_image(os.path.join(THUMB_DIR, "%s_poster" % item["mid"]), item["poster_id"], 120)
+            if p:
+                return self.send_file(p, sniff_image_ctype(p))
+        p = self.cached_image(os.path.join(THUMB_DIR, "%s.jpg" % item["mid"]), item.get("thumb_id"))
+        if p:
+            return self.send_file(p, "image/jpeg")
+        return self.send_json({"error": "video khong co thumbnail"}, 404)
 
     def send_file(self, path, ctype):
         try:
