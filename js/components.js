@@ -66,7 +66,7 @@
       <a class="card${landscape ? ' landscape' : ''}" href="#/movie/${encodeURIComponent(m.id)}" aria-label="${escapeHtml(m.title)}">
         <div class="poster">
           <img ${eager ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" src="${escapeHtml(m.poster)}" alt="" />
-          ${m.tgNew ? '<span class="badge new">MỚI</span>' : (m.quality ? `<span class="badge">${escapeHtml(m.quality)}</span>` : '')}
+          ${m.tgNew ? '<span class="badge new">MỚI</span>' : (m.quality && m.quality !== 'TELE' ? `<span class="badge">${escapeHtml(m.quality)}</span>` : '')}
           ${Bookmarks.has(m.id) ? `<span class="bm" aria-hidden="true">${Icons.bookmarkFill(13)}</span>` : ''}
           <div class="play-hint"><span>${Icons.play(20)}</span></div>
         </div>
