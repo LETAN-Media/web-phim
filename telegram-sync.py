@@ -133,16 +133,33 @@ def sniff_image_ctype(path):
     return "image/jpeg"
 
 
+def _warm_file(key, fid, timeout_wait, attempts=3):
+    """Warm 1 file với retry/backoff. Không raise ngoài hàm (chỉ log)."""
+    if not fid:
+        return
+    last_err = None
+    for attempt in range(1, attempts + 1):
+        try:
+            local_path_for(fid, timeout_wait=timeout_wait)
+            return
+        except Exception as e:
+            last_err = e
+            print("warm %s lan %d/%d loi: %s" % (key, attempt, attempts, e), flush=True)
+            if attempt < attempts:
+                time.sleep(15)
+    print("warm %s FAIL sau %d lan: %s" % (key, attempts, last_err), flush=True)
+
+
 def warm_item(item):
-    """Tải trước video mới về ổ cứng để bấm xem là chạy ngay."""
+    """Tải trước poster/thumb (nhỏ, ưu tiên trước) rồi video về ổ cứng.
+    Poster đi trước để không bị starve khi video lớn đang tải."""
+    _warm_file("poster", item.get("poster_id"), timeout_wait=300, attempts=3)
+    _warm_file("thumb", item.get("thumb_id"), timeout_wait=300, attempts=3)
     try:
         if item.get("file_id"):
             local_path_for(item["file_id"], timeout_wait=900)
-        for key in ("poster_id", "thumb_id"):
-            if item.get(key):
-                local_path_for(item[key], timeout_wait=120)
     except Exception as e:
-        print("warm loi:", e, flush=True)
+        print("warm video loi:", e, flush=True)
 
 
 def api(method, params=None, timeout=30):
