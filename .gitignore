@@ -1,5 +1,6 @@
 # Secret: bot token Telegram — KHÔNG commit
 tg-config.json
+.env
 
 # Dữ liệu runtime / backup
 *.tar.gz
@@ -17,6 +18,7 @@ Thumbs.db
 
 # Test artifacts / node
 node_modules/
+__pycache__/
 package.json
 package-lock.json
 output.json

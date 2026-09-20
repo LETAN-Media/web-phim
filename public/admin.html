@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#080b0c" />
+<title>Đăng phim - PhimHay Admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect x=%272%27 y=%274%27 width=%2720%27 height=%2716%27 rx=%275%27 fill=%27%23e50914%27/%3E%3Cpath d=%27M10 9.2v5.6L14.8 12z%27 fill=%27%23fff%27/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="css/style.css?v=4" />
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="no-nav">
+<header class="header">
+  <div class="container header-inner">
+    <a href="index.html" class="logo"><svg class="logo-mark" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="5" fill="#e50914"/><path d="M10 9.2v5.6L14.8 12z" fill="#fff"/></svg><span>Phim</span>Hay</a>
+    <nav class="nav">
+      <a href="index.html">Trang chủ</a>
+      <a href="upload.html">Up video</a>
+      <a href="admin.html" class="active">Đăng phim</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <div class="section-head"><h2>Đăng phim mới</h2></div>
+
+  <div class="panel" style="margin-bottom:18px">
+    <h3>Tự động từ kênh Telegram</h3>
+    <p style="color:#cdd4ef;line-height:1.7;font-size:14px">
+      Video up lên kênh private (bot đã làm admin) sẽ <b>tự hiển thị</b> ở mục “Mới cập nhật” trên trang chủ trong khoảng 1 phút — không cần thao tác tại đây.
+      Caption dòng đầu nên là tên phim. Form bên dưới chỉ dùng khi muốn đăng thủ công link MP4 / YouTube / bài đăng kênh công khai.
+    </p>
+  </div>
+
+  <div class="admin-layout">
+    <div class="panel">
+      <h3>Thông tin phim</h3>
+      <div class="form-grid">
+        <div class="field full"><label>Tên phim *</label><input id="fTitle" placeholder="VD: Đào, Phở và Piano" /></div>
+        <div class="field"><label>Năm</label><input id="fYear" type="number" value="2025" /></div>
+        <div class="field"><label>Đánh giá (0-10)</label><input id="fRating" type="number" step="0.1" value="8.0" /></div>
+        <div class="field"><label>Chất lượng</label><select id="fQuality"><option>FHD</option><option>HD</option><option>CAM</option><option>4K</option></select></div>
+        <div class="field"><label>Thể loại (cách nhau dấu phẩy)</label><input id="fGenres" placeholder="Hành động, Tình cảm" /></div>
+        <div class="field full"><label>Link poster dọc (tỉ lệ 2:3) *</label><input id="fPoster" placeholder="https://.../poster.jpg — để trống sẽ tự tạo ảnh mẫu" /></div>
+        <div class="field full"><label>Video URL (MP4 / YouTube / link bài đăng Telegram) *</label><input id="fVideo" placeholder="https://.../video.mp4  hoặc  https://www.youtube.com/watch?v=..." /></div>
+        <div class="field full"><label>Mô tả</label><textarea id="fDesc" rows="4" placeholder="Tóm tắt nội dung phim..."></textarea></div>
+      </div>
+      <br>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-play" id="saveBtn">Lưu phim</button>
+        <button class="btn btn-ghost" id="previewBtn">Xem thử video</button>
+      </div>
+      <div class="player-wrap" id="previewWrap" style="display:none;margin-top:14px;border-radius:12px;overflow:hidden"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Phim đã thêm (<span id="adminCount">0</span>)</h3>
+      <div id="adminList"></div>
+      <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+        <button class="btn btn-ghost" id="exportBtn">Xuất JSON</button>
+        <button class="btn btn-ghost" id="clearBtn">Xóa hết</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="js/movies.js?v=4"></script>
+<script>
+const $ = id => document.getElementById(id);
+function getCustom(){ try{return JSON.parse(localStorage.getItem('customMovies')||'[]')}catch(e){return[]} }
+function setCustom(a){ localStorage.setItem('customMovies', JSON.stringify(a)); renderList(); }
+
+function renderList(){
+  const list = getCustom();
+  $('adminCount').textContent = list.length;
+  $('adminList').innerHTML = list.length ? '' : '<p style="color:#9aa3c0">Chưa có phim nào. Thêm ở form bên trái.</p>';
+  list.forEach(m=>{
+    const d=document.createElement('div'); d.className='admin-item';
+    d.innerHTML=`<img src="${m.poster}"/><div><b>${m.title}</b><br><small style="color:#9aa3c0">${m.year} • ${m.videoUrl.slice(0,38)}...</small></div><button>Xóa</button>`;
+    d.querySelector('button').onclick=()=>{ setCustom(getCustom().filter(x=>x.id!==m.id)); };
+    $('adminList').appendChild(d);
+  });
+}
+function youtubeId(url){ const m=String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/); return m?m[1]:null; }
+function preview(){
+  const url=$('fVideo').value.trim(); const w=$('previewWrap'); w.style.display='block';
+  if(!url){ w.innerHTML=''; return; }
+  const yt=youtubeId(url);
+  if(yt){ w.innerHTML=`<iframe src="https://www.youtube.com/embed/${yt}" allowfullscreen></iframe>`; }
+  else if(url.includes('t.me/')){ w.innerHTML=`<iframe src="${url.split('?')[0]}?embed=1" allowfullscreen></iframe>`; }
+  else { w.innerHTML=`<video controls src="${url}" style="width:100%"></video>`; }
+}
+$('previewBtn').onclick=preview;
+$('saveBtn').onclick=()=>{
+  const title=$('fTitle').value.trim(), video=$('fVideo').value.trim();
+  if(!title||!video){ alert('Vui lòng nhập Tên phim và Video URL'); return; }
+  const seed=encodeURIComponent(title);
+  const movie={
+    id: Date.now(),
+    title,
+    year: +$('fYear').value||2025,
+    rating: +$('fRating').value||8.0,
+    quality: $('fQuality').value,
+    genres: $('fGenres').value.split(',').map(s=>s.trim()).filter(Boolean).length?$('fGenres').value.split(',').map(s=>s.trim()).filter(Boolean):['Mới cập nhật'],
+    poster: $('fPoster').value.trim()||`https://picsum.photos/seed/${seed}/400/600`,
+    backdrop: `https://picsum.photos/seed/${seed}bg/1200/500`,
+    desc: $('fDesc').value.trim(),
+    videoUrl: video
+  };
+  const list=getCustom(); list.unshift(movie); setCustom(list);
+  alert('Đã lưu. Mở trang chủ để xem phim mới.');
+  $('fTitle').value=''; $('fVideo').value=''; $('fDesc').value='';
+};
+$('exportBtn').onclick=()=>{
+  const blob=new Blob([JSON.stringify(getCustom(),null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='movies.json'; a.click();
+};
+$('clearBtn').onclick=()=>{ if(confirm('Xóa hết phim đã thêm?')) setCustom([]); };
+// Nhận link từ trang upload.html chuyển sang
+try {
+  const pre = JSON.parse(localStorage.getItem('prefillVideo') || 'null');
+  if (pre && pre.videoUrl) {
+    $('fVideo').value = pre.videoUrl;
+    if (pre.title && !$('fTitle').value) $('fTitle').value = pre.title;
+    localStorage.removeItem('prefillVideo');
+  }
+} catch(e) {}
+renderList();
+</script>
+</body>
+</html>

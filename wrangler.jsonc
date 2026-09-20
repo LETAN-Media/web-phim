@@ -1,0 +1,24 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/configuration-schema.json",
+  "name": "web-phim",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/worker.js",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "r2_buckets": [
+    {
+      "binding": "R2_BUCKET",
+      "bucket_name": "web-phim-videos"
+    }
+  ],
+  "vars": {
+    "ENABLE_LEGACY_VIDEO_FALLBACK": "false",
+    "LEGACY_ORIGIN": "https://phim.callboy76.live"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

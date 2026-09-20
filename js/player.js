@@ -25,8 +25,7 @@
     }
     // Mặc định: file MP4 trực tiếp (kể cả /api/tg-stream)
     wrap.innerHTML = `<video controls ${autoplay ? 'autoplay' : ''} playsinline preload="metadata" src="${esc(url)}"></video>`;
-    const note = url.startsWith('/api/tg-stream') ? 'Phát trực tiếp từ kênh Telegram — video mới up lên kênh sẽ tự hiển thị tại đây.' : '';
-    return { telegramUrl: null, note };
+    return { telegramUrl: null, note: '' };
   }
 
   window.Player = { youtubeId, buildPlayer };

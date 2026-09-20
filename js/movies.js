@@ -65,18 +65,6 @@ const DEFAULT_MOVIES = [
     videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
   },
   {
-    id: 6,
-    title: "Demo Link Telegram",
-    year: 2025,
-    rating: 9.0,
-    quality: "FHD",
-    genres: ["Hành động", "Chiếu rạp"],
-    poster: "https://picsum.photos/seed/telegramdemo/400/600",
-    backdrop: "https://picsum.photos/seed/telegrambg/1200/500",
-    desc: "Ví dụ minh họa: khi bạn dán link Telegram dạng https://t.me/tenkenh/123, web sẽ tự nhúng player Telegram. Hãy thay link này bằng bài đăng thật trong kênh của bạn.",
-    videoUrl: "https://t.me/durov/383"
-  },
-  {
     id: 7,
     title: "Subaru Outback",
     year: 2023,
