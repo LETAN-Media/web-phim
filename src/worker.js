@@ -183,8 +183,112 @@ async function getFeedItems(env, request) {
   return data.items || [];
 }
 
+// ================= First-chunk prewarm (Cache API, internal only) =================
+// On /api/play, background-fetch gateway bytes [0,512KB) then [512KB,2MB)
+// into Cache API. Safari range probes inside that window are sliced from
+// cache -> 206 with exact Content-Range/Length. Bounded (<=2MB), video body
+// itself is never buffered on the hot path.
+const PREWARM_PART0_END = 524288;
+const PREWARM_PART1_END = 2097152;
+
+function prewarmKey(chat, mid, part) {
+  return `https://prewarm.internal/v/${chat}/${mid}/${part}`;
+}
+
+function parseTotalFromContentRange(header) {
+  if (!header) return null;
+  const m = /\/(\d+)\s*$/.exec(header);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+async function prewarmParts(env, origin, chat, mid, exp, sig) {
+  const jobs = [
+    [0, PREWARM_PART0_END, "0"],
+    [PREWARM_PART0_END, PREWARM_PART1_END, "1"],
+  ];
+  for (const [s, e, part] of jobs) {
+    const key = prewarmKey(chat, mid, part);
+    try {
+      const hit = await caches.default.match(key);
+      if (hit) continue;
+      const r = await fetch(
+        `${origin}/v1/video/${chat}/${mid}?exp=${encodeURIComponent(exp)}&sig=${encodeURIComponent(sig)}`,
+        { headers: { range: `bytes=${s}-${e - 1}` } }
+      );
+      if (!r.ok || r.status !== 206) continue;
+      const buf = await r.arrayBuffer();
+      if (!buf || buf.byteLength === 0) continue;
+      const total = parseTotalFromContentRange(r.headers.get("content-range")) || e;
+      const stored = new Response(buf, {
+        status: 200,
+        headers: {
+          "content-type": r.headers.get("content-type") || "video/mp4",
+          "x-prewarm-start": String(s),
+          "x-prewarm-total": String(total),
+          "cache-control": "private, max-age=21600",
+        },
+      });
+      await caches.default.put(key, stored);
+    } catch (err) {
+      console.error(`[worker] prewarm ${chat}/${mid}/${part} failed: ${err && err.message}`);
+    }
+  }
+}
+
+async function serveFromPrewarm(chat, mid, start, end) {
+  if (start < 0 || end < start || end >= PREWARM_PART1_END) return null;
+  const need0 = start < PREWARM_PART0_END;
+  const need1 = end >= PREWARM_PART0_END;
+  try {
+    const [p0, p1] = await Promise.all([
+      need0 ? caches.default.match(prewarmKey(chat, mid, "0")) : null,
+      need1 ? caches.default.match(prewarmKey(chat, mid, "1")) : null,
+    ]);
+    if (need0 && !p0) return null;
+    if (need1 && !p1) return null;
+    const bufs = [];
+    let total = null;
+    let cursor = 0;
+    for (const [resp, partStart] of [[p0, 0], [p1, PREWARM_PART0_END]]) {
+      if (!resp) continue;
+      const t = Number(resp.headers.get("x-prewarm-total") || 0);
+      if (Number.isFinite(t) && t > 0) total = t;
+      const ab = await resp.arrayBuffer();
+      bufs.push({ start: partStart, bytes: new Uint8Array(ab) });
+      cursor = partStart + ab.byteLength;
+    }
+    if (total === null) return null;
+    if (end >= total) return null;
+    const out = new Uint8Array(end - start + 1);
+    let filled = 0;
+    for (const b of bufs) {
+      const s = Math.max(start, b.start);
+      const e = Math.min(end, b.start + b.bytes.length - 1);
+      if (e < s) continue;
+      out.set(b.bytes.subarray(s - b.start, e - b.start + 1), filled);
+      filled += e - s + 1;
+    }
+    if (filled !== out.length) return null;
+    return new Response(out, {
+      status: 206,
+      headers: {
+        "content-type": (p0 || p1).headers.get("content-type") || "video/mp4",
+        "accept-ranges": "bytes",
+        "content-range": `bytes ${start}-${end}/${total}`,
+        "content-length": String(out.length),
+        "cache-control": "private, max-age=3600",
+      },
+    });
+  } catch (err) {
+    console.error(`[worker] prewarm serve failed: ${err && err.message}`);
+    return null;
+  }
+}
+
 // GET /api/play?mid=<n>[&format=json] — fresh signed URL at play time, 302 by default.
-async function handlePlay(env, request, url) {
+async function handlePlay(env, request, url, ctx) {
   if (request.method !== "GET" && request.method !== "HEAD") return errorJson("method not allowed", 405);
   const mid = url.searchParams.get("mid");
   if (!mid || !/^\d+$/.test(mid)) return errorJson("invalid mid", 400);
@@ -202,6 +306,16 @@ async function handlePlay(env, request, url) {
   if (!found) return errorJson("not found", 404);
   const signed = await signMediaUrl(env, chat, mid);
   if (!signed) return errorJson("signing not configured", 500);
+  try {
+    const origin = gatewayOrigin(env);
+    const exp = new URL(signed, url).searchParams.get("exp") || "";
+    const sig = new URL(signed, url).searchParams.get("sig") || "";
+    if (origin && exp && sig && ctx && typeof ctx.waitUntil === "function") {
+      ctx.waitUntil(prewarmParts(env, origin, chat, mid, exp, sig));
+    }
+  } catch (err) {
+    console.error(`[worker] prewarm schedule failed: ${err && err.message}`);
+  }
   if (url.searchParams.get("format") === "json") return jsonResponse({ ok: true, url: signed });
   return Response.redirect(new URL(signed, url).toString(), 302);
 }
@@ -217,13 +331,29 @@ async function handleMediaProxy(env, request, chat, mid, url) {
   const origin = gatewayOrigin(env);
   if (!origin) return errorJson("gateway not configured", 500);
 
+  const range = request.headers.get("range");
+  const inm = request.headers.get("if-none-match");
+
+  // Fast path: explicit small ranges inside the prewarm window are sliced
+  // from Cache API (proves total from cached headers; falls through to
+  // upstream proxy on any miss). Suffix/open ranges always proxy.
+  if (request.method === "GET") {
+    const probe = /^bytes=(\d+)-(\d+)$/.exec((range || "").trim());
+    if (probe) {
+      const start = Number(probe[1]);
+      const end = Number(probe[2]);
+      if (end >= start && end < PREWARM_PART1_END) {
+        const cached = await serveFromPrewarm(chat, mid, start, end);
+        if (cached) return cached;
+      }
+    }
+  }
+
   const upstream = `${origin}/v1/video/${chat}/${mid}?exp=${encodeURIComponent(
     url.searchParams.get("exp") || ""
   )}&sig=${encodeURIComponent(url.searchParams.get("sig") || "")}`;
   const headers = new Headers();
-  const range = request.headers.get("range");
   if (range) headers.set("range", range);
-  const inm = request.headers.get("if-none-match");
   if (inm) headers.set("if-none-match", inm);
   let upstreamResp = null;
   try {
@@ -242,11 +372,11 @@ async function handleMediaProxy(env, request, chat, mid, url) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/feed") return handleFeed(env, request);
-    if (url.pathname === "/api/play") return handlePlay(env, request, url);
+    if (url.pathname === "/api/play") return handlePlay(env, request, url, ctx);
     if (url.pathname.startsWith("/m/")) {
       const parts = url.pathname.slice(3).split("/").filter(Boolean);
       if (parts.length !== 2) return errorJson("invalid path", 400);

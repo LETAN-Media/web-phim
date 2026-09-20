@@ -297,7 +297,27 @@
     if (!isNew) return;
     detail.scrollTop = 0;
     toTop.classList.remove('show');
+    prefetchPlayUrl(m);
     if (parseHash().params.get('play') === '1') play();
+  }
+
+  // Prefetch signed play URL ngay khi mở detail (kích hoạt server prewarm,
+  // lúc bấm Play đã có URL sẵn). Không đổi autoplay/UI. Chỉ áp dụng phim /api/play.
+  function prefetchPlayUrl(m) {
+    if (!m || typeof m.videoUrl !== 'string') return;
+    if (!/\/api\/play\?mid=\d+/.test(m.videoUrl)) return;
+    if (m._signedUrl && m._signedAt && Date.now() - m._signedAt < 5 * 3600 * 1000) return;
+    const mm = m.videoUrl.match(/\/api\/play\?mid=(\d+)/);
+    if (!mm) return;
+    const mid = encodeURIComponent(mm[1]);
+    fetch(`/api/play?mid=${mid}&format=json`, { cache: 'no-store' }).then(r => r.json()).then(d => {
+      if (d && d.url) { m._signedUrl = d.url; m._signedAt = Date.now(); }
+    }).catch(() => {});
+  }
+
+  function playUrlFor(m) {
+    if (m._signedUrl && m._signedAt && Date.now() - m._signedAt < 5 * 3600 * 1000) return m._signedUrl;
+    return m.videoUrl;
   }
 
   function closeDetail() {
@@ -326,7 +346,8 @@
   function play() {
     if (!currentMovie) return;
     const autoplay = Settings.get('autoplay') !== false;
-    const { telegramUrl, note } = Player.buildPlayer(currentMovie, playerWrap, { autoplay });
+    const effective = Object.assign({}, currentMovie, { videoUrl: playUrlFor(currentMovie) });
+    const { telegramUrl, note } = Player.buildPlayer(effective, playerWrap, { autoplay });
     playerWrap.hidden = false;
     $('detailTop').classList.add('playing');
     $('detailBar').classList.add('playing');
