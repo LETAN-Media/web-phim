@@ -15,8 +15,13 @@
     }
   ],
   "vars": {
-    "ENABLE_LEGACY_VIDEO_FALLBACK": "false",
-    "LEGACY_ORIGIN": "https://phim.callboy76.live"
+    "ENABLE_LEGACY_VIDEO_FALLBACK": "true",
+    "LEGACY_ORIGIN": "https://phim.callboy76.live",
+    "ENABLE_NEW_TELEGRAM_GATEWAY": "true",
+    "ENABLE_LEGACY_FALLBACK": "true",
+    "GATEWAY_ORIGIN": "https://p01--telegram-stream-gateway--r4v2pzg2klvq.code.run",
+    "CHANNEL_CHAT_ID": "-1003952062608",
+    "URL_TTL_SECONDS": "21600"
   },
   "observability": {
     "enabled": true
