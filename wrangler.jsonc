@@ -8,12 +8,7 @@
     "directory": "./public",
     "binding": "ASSETS"
   },
-  "r2_buckets": [
-    {
-      "binding": "R2_BUCKET",
-      "bucket_name": "web-phim-videos"
-    }
-  ],
+  "r2_buckets": [],
   "vars": {
     "ENABLE_LEGACY_VIDEO_FALLBACK": "true",
     "LEGACY_ORIGIN": "https://phim.callboy76.live",

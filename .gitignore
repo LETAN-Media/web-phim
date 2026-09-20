@@ -2,12 +2,12 @@
 tg-config.json
 .env
 
-# Dữ liệu runtime / backup
+# Dữ liệu runtime / backup (neo ở root; public/data + public/thumbs là assets cho Worker)
 *.tar.gz
 *.part
 *.tmp
-data/
-videos/
+/data/
+/videos/
 
 # OS / editor
 .DS_Store
