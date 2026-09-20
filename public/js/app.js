@@ -7,7 +7,7 @@
   const cssUrl = u => `url("${String(u || '').replace(/["\\\n\r)]/g, '')}")`;
 
   const VIEWS = ['home', 'movies', 'new', 'bookmarks', 'search', 'settings'];
-  const state = { route: 'home', genre: 'Tất cả', query: '', inAppNav: false };
+  const state = { route: 'home', genre: 'Tất cả', tag: '', query: '', inAppNav: false };
 
   // ===================== Router =====================
   function parseHash() {
@@ -25,7 +25,10 @@
     const r = parseHash();
     if (r.route === 'movie') { openDetail(r.id); return; }
     closeDetail();
-    if (r.route === 'movies') state.genre = r.params.get('genre') || 'Tất cả';
+    if (r.route === 'movies') {
+      state.genre = r.params.get('genre') || 'Tất cả';
+      state.tag = r.params.get('tag') || '';
+    }
     if (r.route === 'search' && r.params.has('q')) state.query = r.params.get('q') || '';
     showView(r.route);
   }
@@ -91,6 +94,9 @@
 
     const add = (title, list, opts) => { const s = mediaRow(title, list, opts); if (s) frag.appendChild(s); };
     add('Đánh giá cao', Store.topRated(), { href: '#/movies' });
+    Store.tags().forEach(t => {
+      add(`Tag: ${t}`, Store.byTag(t), { href: `#/movies?tag=${encodeURIComponent(t)}` });
+    });
     add('Mới nhất', Store.latest().filter(m => !Store.isTg(m)), { href: '#/movies' });
     const saved = Bookmarks.movies();
     if (saved.length) add('Đã lưu của bạn', saved, { href: '#/bookmarks' });
@@ -119,23 +125,30 @@
   // ===================== MOVIES =====================
   function renderMovies() {
     const genres = ['Tất cả', ...Store.genres()];
+    const activeTag = state.tag || '';
+    const tags = Store.tags();
     if (!genres.includes(state.genre)) state.genre = 'Tất cả';
     const bar = $('genreBar');
     bar.innerHTML = '';
     genres.forEach(g => {
-      const b = el(`<button class="chip${g === state.genre ? ' active' : ''}" role="tab" aria-selected="${g === state.genre}">${escapeHtml(g)}</button>`);
+      const b = el(`<button class="chip${g === state.genre && !activeTag ? ' active' : ''}" role="tab" aria-selected="${g === state.genre && !activeTag}">${escapeHtml(g)}</button>`);
       b.onclick = () => navigate(g === 'Tất cả' ? '#/movies' : `#/movies?genre=${encodeURIComponent(g)}`);
+      bar.appendChild(b);
+    });
+    tags.forEach(t => {
+      const b = el(`<button class="chip chip-tag${t === activeTag ? ' active' : ''}" role="tab" aria-selected="${t === activeTag}">${UI.Icons.tag(13)} ${escapeHtml(t)}</button>`);
+      b.onclick = () => navigate(t === activeTag ? '#/movies' : `#/movies?tag=${encodeURIComponent(t)}`);
       bar.appendChild(b);
     });
     bar.querySelector('.chip.active')?.scrollIntoView({ inline: 'center', block: 'nearest' });
 
-    const list = Store.byGenre(state.genre);
-    $('moviesTitle').textContent = state.genre === 'Tất cả' ? 'Tất cả phim' : state.genre;
+    const list = activeTag ? Store.byTag(activeTag) : Store.byGenre(state.genre);
+    $('moviesTitle').textContent = activeTag || (state.genre === 'Tất cả' ? 'Tất cả phim' : state.genre);
     $('moviesCount').textContent = `${list.length} phim`;
     fillGrid($('movieGrid'), list);
     $('moviesEmpty').innerHTML = '';
     if (list.length) return;
-    const e = emptyState({ title: 'Không có phim', text: 'Thể loại này chưa có phim nào.', actionHtml: '<button class="btn btn-ghost" id="moviesReset">Xem tất cả</button>' });
+    const e = emptyState({ title: 'Không có phim', text: activeTag ? 'Chưa có phim nào gắn tag này.' : 'Thể loại này chưa có phim nào.', actionHtml: '<button class="btn btn-ghost" id="moviesReset">Xem tất cả</button>' });
     $('moviesEmpty').appendChild(e);
     $('moviesReset').onclick = () => navigate('#/movies');
   }
@@ -272,7 +285,7 @@
     $('dTitle').textContent = m.title;
     $('dMeta').innerHTML = metaHtml(m);
     $('dDesc').textContent = m.desc || 'Chưa có mô tả cho phim này.';
-    $('dGenres').innerHTML = (m.genres || []).map(g => `<a href="#/movies?genre=${encodeURIComponent(g)}">${escapeHtml(g)}</a>`).join('');
+    $('dGenres').innerHTML = (m.tags || []).map(t => `<a href="#/movies?tag=${encodeURIComponent(t)}">${UI.Icons.tag(12)} ${escapeHtml(t)}</a>`).join('');
     renderBookmarkBtn();
     if (isNew) {
       $('dDesc').classList.remove('expanded');

@@ -19,6 +19,18 @@
     document.dispatchEvent(new CustomEvent(name, { detail }));
   }
 
+  // ---- Tags: tự suy từ tên/mô tả phim. Thêm rule mới tại đây là toàn web áp dụng ----
+  const TAG_RULES = [
+    { match: /hormone/i, tag: 'Hormone' },
+  ];
+
+  function tagsFor(m) {
+    const hay = `${(m && m.title) || ''} ${(m && m.desc) || ''}`;
+    const tags = [];
+    TAG_RULES.forEach(r => { if (r.match.test(hay)) tags.push(r.tag); });
+    return tags;
+  }
+
   // ---- Telegram feed -> movie objects (giữ nguyên mapping cũ) ----
   function mapFeedItem(x, i) {
     const date = x.date ? new Date(x.date * 1000) : null;
@@ -30,6 +42,7 @@
       rating: null,
       quality: 'TELE',
       genres: ['Mới cập nhật'],
+      tags: tagsFor({ title: x.title, desc: x.desc }),
       poster: x.thumb,
       backdrop: x.thumb,
       videoUrl: x.stream,
@@ -45,7 +58,7 @@
 
     isTg(m) { return String(m && m.id).startsWith(TG_PREFIX); },
     custom() { const v = readJson(LS_CUSTOM, []); return Array.isArray(v) ? v : []; },
-    all() { return [...this.tgMovies, ...this.custom(), ...DEFAULT_MOVIES]; },
+    all() { return [...this.tgMovies, ...this.custom(), ...DEFAULT_MOVIES].map(m => m.tags ? m : Object.assign({}, m, { tags: tagsFor(m) })); },
     byId(id) { return this.all().find(m => String(m.id) === String(id)) || null; },
 
     genres() {
@@ -57,13 +70,23 @@
       if (!genre || genre === 'Tất cả') return this.all();
       return this.all().filter(m => (m.genres || []).includes(genre));
     },
+    tags() {
+      const set = new Set();
+      this.all().forEach(m => (m.tags || []).forEach(t => set.add(t)));
+      return Array.from(set);
+    },
+    byTag(tag) {
+      if (!tag || tag === 'Tất cả') return this.all();
+      return this.all().filter(m => (m.tags || []).includes(tag));
+    },
     search(q) {
       const s = String(q || '').trim().toLowerCase();
       if (!s) return [];
       return this.all().filter(m =>
         m.title.toLowerCase().includes(s) ||
         (m.desc || '').toLowerCase().includes(s) ||
-        (m.genres || []).some(g => g.toLowerCase().includes(s))
+        (m.genres || []).some(g => g.toLowerCase().includes(s)) ||
+        (m.tags || []).some(t => t.toLowerCase().includes(s))
       );
     },
     topRated() {

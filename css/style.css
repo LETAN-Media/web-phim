@@ -120,7 +120,7 @@ button{font-family:inherit;color:inherit}
 .meta .rating svg{fill:var(--star)}
 .meta .dot{width:3px;height:3px;border-radius:50%;background:var(--muted2);padding:0}
 .genre-list{display:flex;gap:8px;flex-wrap:wrap}
-.genre-list a{background:rgba(255,255,255,.07);border:1px solid var(--line);padding:5px 12px;border-radius:999px;font-size:13px;color:#dfe5e8;transition:.18s}
+.genre-list a{background:rgba(255,255,255,.07);border:1px solid var(--line);padding:5px 12px;border-radius:999px;font-size:13px;color:#dfe5e8;transition:.18s;display:inline-flex;align-items:center;gap:5px}
 .genre-list a:hover{background:rgba(255,255,255,.14)}
 
 /* ---------- Section / row ---------- */
@@ -173,6 +173,9 @@ button{font-family:inherit;color:inherit}
 .chip{flex:none;white-space:nowrap;padding:8px 15px;border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--muted);cursor:pointer;font-size:13.5px;font-weight:600;min-height:36px;transition:.18s}
 .chip:hover{color:#fff;border-color:var(--line2)}
 .chip.active{background:#fff;border-color:#fff;color:#000}
+.chip-tag{display:inline-flex;align-items:center;gap:5px}
+.chip-tag svg{color:var(--brand)}
+.chip-tag.active svg{color:#000}
 
 /* ---------- Skeleton ---------- */
 .skel{position:relative;overflow:hidden;background:var(--surface);border-radius:var(--radius)}
