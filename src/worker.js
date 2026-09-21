@@ -522,12 +522,20 @@ export default {
     }
     if (url.pathname === "/api/health") return jsonResponse({ ok: true });
 
-    // Static frontend fallback.
+    // Static frontend fallback. Unmatched paths must be a REAL HTTP 404
+    // (public/404.html via not_found_handling=404-page) — never a fake 200.
+    // HTML responses get X-Robots-Tag: noindex, follow (belt & braces with
+    // the <meta> inside 404.html). API/streaming routes are handled above.
     if (!env.ASSETS || typeof env.ASSETS.fetch !== "function") {
       return errorJson("static assets binding missing", 500);
     }
     try {
-      return await env.ASSETS.fetch(request);
+      const resp = await env.ASSETS.fetch(request);
+      const ctype = resp.headers.get("content-type") || "";
+      if (!ctype.includes("text/html")) return resp;
+      const headers = new Headers(resp.headers);
+      headers.set("x-robots-tag", "noindex, follow");
+      return new Response(resp.body, { status: resp.status, headers });
     } catch (e) {
       console.error(`[worker] assets fetch failed: ${e && e.message}`);
       return errorJson("assets error", 502);

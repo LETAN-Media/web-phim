@@ -26,3 +26,7 @@ output.json
 test_*.js
 run_*.js
 run_*.py
+
+# 404 test artifacts + wrangler local state
+test-404/
+.wrangler/
