@@ -276,11 +276,9 @@ def attach_poster(post, poster_id, pending_group):
         print("anh mid=%s: bo qua (chua co video nao)" % mid, flush=True)
         return
     latest = feed[0]
-    in_window = 0 <= post.get("date", 0) - latest.get("date", 0) <= POSTER_WINDOW
-    if not latest.get("poster_id") or in_window:
-        set_poster(feed, latest, poster_id)
-        return
-    print("anh mid=%s: bo qua (video moi nhat da co poster, qua %ss)" % (mid, POSTER_WINDOW), flush=True)
+    # Ảnh lẻ luôn thành poster/hero của video mới nhất (không giới hạn thời gian).
+    set_poster(feed, latest, poster_id)
+    return
 
 
 def update_caption(post):
