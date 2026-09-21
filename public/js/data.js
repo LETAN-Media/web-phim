@@ -103,6 +103,10 @@
       return [...same, ...rest].slice(0, limit);
     },
     featured() {
+      // Ưu tiên video thật: Telegram feed mới nhất -> phim đăng thủ công -> mới fallback mock
+      if (this.tgMovies.length) return this.tgMovies[0];
+      const custom = this.custom();
+      if (custom.length) return custom[0];
       return this.topRated()[0] || this.all()[0] || null;
     },
 
