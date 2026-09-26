@@ -21,7 +21,7 @@
 
   // ---- Tags: tự suy từ tên/mô tả phim. Thêm rule mới tại đây là toàn web áp dụng ----
   const TAG_RULES = [
-    { match: /hormone/i, tag: 'Hormone' },
+    { match: /hormone/i, tag: 'HORMONE' },
   ];
 
   function tagsFor(m) {
@@ -103,7 +103,10 @@
       return [...same, ...rest].slice(0, limit);
     },
     featured() {
-      // Ưu tiên video thật: Telegram feed mới nhất -> phim đăng thủ công -> mới fallback mock
+      // Hero mac dinh: HORMONE 26C (mid=27). Doi so nay de doi hero.
+      // Neu video ghim khong con thi fallback: feed moi nhat -> dang thu cong -> top rated.
+      const pinned = this.byId(TG_PREFIX + 27);
+      if (pinned) return pinned;
       if (this.tgMovies.length) return this.tgMovies[0];
       const custom = this.custom();
       if (custom.length) return custom[0];

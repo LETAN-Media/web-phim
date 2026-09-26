@@ -95,7 +95,7 @@
     const add = (title, list, opts) => { const s = mediaRow(title, list, opts); if (s) frag.appendChild(s); };
     add('Đánh giá cao', Store.topRated(), { href: '#/movies' });
     Store.tags().forEach(t => {
-      add(`Tag: ${t}`, Store.byTag(t), { href: `#/movies?tag=${encodeURIComponent(t)}` });
+      add(`${t}`, Store.byTag(t), { href: `#/movies?tag=${encodeURIComponent(t)}` });
     });
     add('Mới nhất', Store.latest().filter(m => !Store.isTg(m)), { href: '#/movies' });
     const saved = Bookmarks.movies();
