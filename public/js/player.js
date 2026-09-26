@@ -1,7 +1,14 @@
-// Player: MP4 trực tiếp / bài đăng Telegram / YouTube. Logic giữ nguyên từ bản cũ.
+// Player: MP4 trực tiếp / bài đăng Telegram / YouTube / Eporner. Logic giữ nguyên từ bản cũ.
 (function () {
   function youtubeId(url) {
     const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/);
+    return m ? m[1] : null;
+  }
+
+  // Eporner: nhận link watch (hd-porn/<id>/...) hoặc link embed (embed/<id>).
+  // Embed chính thức: https://www.eporner.com/embed/<id>
+  function epornerId(url) {
+    const m = String(url).match(/eporner\.com\/(?:embed\/|hd-porn\/|video-)([A-Za-z0-9]{5,})/);
     return m ? m[1] : null;
   }
 
@@ -17,6 +24,11 @@
       wrap.innerHTML = `<iframe src="https://www.youtube.com/embed/${yt}?autoplay=${auto}&rel=0" title="${esc(movie.title)}" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>`;
       return { telegramUrl: null, note: '' };
     }
+    const ep = epornerId(url);
+    if (ep) {
+      wrap.innerHTML = `<iframe src="https://www.eporner.com/embed/${ep}" title="${esc(movie.title)}" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>`;
+      return { telegramUrl: null, note: '' };
+    }
     if (isHttp && url.includes('t.me/')) {
       // Kênh phải là public thì embed mới chạy
       const embedUrl = url.split('?')[0] + '?embed=1';
@@ -28,5 +40,5 @@
     return { telegramUrl: null, note: '' };
   }
 
-  window.Player = { youtubeId, buildPlayer };
+  window.Player = { youtubeId, epornerId, buildPlayer };
 })();

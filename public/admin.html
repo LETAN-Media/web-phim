@@ -82,13 +82,16 @@ function renderList(){
   });
 }
 function youtubeId(url){ const m=String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/); return m?m[1]:null; }
+function epornerId(url){ const m=String(url).match(/eporner\.com\/(?:embed\/|hd-porn\/|video-)([A-Za-z0-9]{5,})/); return m?m[1]:null; }
 function preview(){
   const url=$('fVideo').value.trim(); const w=$('previewWrap'); w.style.display='block';
   if(!url){ w.innerHTML=''; return; }
   const yt=youtubeId(url);
   if(yt){ w.innerHTML=`<iframe src="https://www.youtube.com/embed/${yt}" allowfullscreen></iframe>`; }
+  else { const ep=epornerId(url);
+    if(ep){ w.innerHTML=`<iframe src="https://www.eporner.com/embed/${ep}" allowfullscreen></iframe>`; }
   else if(url.includes('t.me/')){ w.innerHTML=`<iframe src="${url.split('?')[0]}?embed=1" allowfullscreen></iframe>`; }
-  else { w.innerHTML=`<video controls src="${url}" style="width:100%"></video>`; }
+  else { w.innerHTML=`<video controls src="${url}" style="width:100%"></video>`; } }
 }
 $('previewBtn').onclick=preview;
 $('saveBtn').onclick=()=>{
