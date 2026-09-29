@@ -4,7 +4,7 @@ const DEFAULT_MOVIES = [
   {
     id: "test-youtube",
     title: "TEST",
-    desc: "Video test trỏ thẳng Eporner (Hormone 26), không qua Telegram hay R2.",
+    desc: "",
     year: 2026,
     rating: 8.0,
     quality: "480p",

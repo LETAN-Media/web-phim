@@ -284,7 +284,8 @@
     $('dBackdrop').style.backgroundImage = cssUrl(img);
     $('dTitle').textContent = m.title;
     $('dMeta').innerHTML = metaHtml(m);
-    $('dDesc').textContent = m.desc || 'Chưa có mô tả cho phim này.';
+    $('dDesc').textContent = m.desc || '';
+    $('dDesc').hidden = !m.desc;
     $('dGenres').innerHTML = (m.tags || []).map(t => `<a href="#/movies?tag=${encodeURIComponent(t)}">${UI.Icons.tag(12)} ${escapeHtml(t)}</a>`).join('');
     renderBookmarkBtn();
     if (isNew) {
