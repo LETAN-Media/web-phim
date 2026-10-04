@@ -1,0 +1,31 @@
+{
+  "taken_at": "2026-09-20T20:47:04.968919+00:00",
+  "zone": {
+    "id": "ec25fbd0941153b903202b78fe736576",
+    "name": "callboy76.live",
+    "status": "active",
+    "name_servers": [
+      "maisie.ns.cloudflare.com",
+      "nicolas.ns.cloudflare.com"
+    ]
+  },
+  "phim_records": [
+    {
+      "id": "bbdfe2f39237b9e9146652dcc94b47c5",
+      "name": "phim.callboy76.live",
+      "type": "A",
+      "content": "172.237.1.240",
+      "proxiable": true,
+      "proxied": false,
+      "ttl": 1,
+      "settings": {},
+      "meta": {},
+      "comment": null,
+      "tags": [],
+      "created_on": "2026-08-24T16:02:22.887255Z",
+      "modified_on": "2026-08-29T21:41:25.225816Z"
+    }
+  ],
+  "rollback": "PUT /zones/<zone>/dns_records/<id> back to this object to restore VPS",
+  "git_commit": "6df045448f7d7e8eb5c8e3a465debc49db64800f"
+}
