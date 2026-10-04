@@ -54,13 +54,22 @@
     return `<span class="rating">${Icons.star(size)}${escapeHtml(Number(rating).toFixed(1))}</span>`;
   }
 
+  function formatViews(v) {
+    if (!Number.isFinite(v)) return '';
+    if (v >= 1000000) return (v / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+    return String(v);
+  }
+
   // Điểm lượt xem: số nguyên + icon sao (không "/10" vì không phải thang 10).
-  // Hàng nghìn hiển thị kiểu vi-VN (vd 8.532) cho gọn.
+  // Rút gọn dạng compact (vd 8.517 -> 8.5k, 10.866 -> 10.9k).
   function viewsHtml(views, size = 12) {
     if (views == null || views === '') return '';
     const v = Math.floor(Number(views));
-    const text = Number.isFinite(v) ? v.toLocaleString('vi-VN') : views;
-    return `<span class="rating">${Icons.star(size)}${escapeHtml(String(text))}</span>`;
+    if (!Number.isFinite(v)) return `<span class="rating">${Icons.star(size)}${escapeHtml(String(views))}</span>`;
+    const text = formatViews(v);
+    const full = v.toLocaleString('vi-VN');
+    return `<span class="rating" title="${escapeHtml(full)} lượt">${Icons.star(size)}${escapeHtml(text)}</span>`;
   }
 
   function movieCard(m, opts = {}) {
