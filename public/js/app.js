@@ -241,7 +241,7 @@
         <h3>Phát video</h3>
         <button class="setting" role="switch" aria-checked="${s.autoplay}" data-setting="autoplay">
           <span class="ico">${Icons.play(18)}</span>
-          <span class="txt"><b>Tự động phát</b><small>Phát ngay khi bấm nút Phát ở trang chi tiết</small></span>
+          <span class="txt"><b>Tự động phát</b><small>Tự động phát video ngay khi mở phim</small></span>
           <span class="switch" aria-hidden="true"></span>
         </button>
       </div>
@@ -319,7 +319,11 @@
     detail.scrollTop = 0;
     toTop.classList.remove('show');
     prefetchPlayUrl(m);
-    if (parseHash().params.get('play') === '1') play();
+
+    // Tự động phát video ngay khi mở phim nếu setting autoplay đang bật (mặc định: bật)
+    if (Settings.get('autoplay') !== false || parseHash().params.get('play') === '1') {
+      play();
+    }
   }
 
   // Prefetch signed play URL ngay khi mở detail (kích hoạt server prewarm,

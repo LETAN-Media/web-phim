@@ -35,8 +35,21 @@
       wrap.innerHTML = `<iframe src="${esc(embedUrl)}" title="${esc(movie.title)}" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>`;
       return { telegramUrl: url, note: 'Video nhúng từ Telegram. Nếu không phát được, chọn “Mở trên Telegram” (kênh phải để công khai).' };
     }
-    // Mặc định: file MP4 trực tiếp (kể cả /api/tg-stream)
-    wrap.innerHTML = `<video controls ${autoplay ? 'autoplay' : ''} playsinline preload="metadata" src="${esc(url)}"></video>`;
+    // Mặc định: file MP4 trực tiếp (kể cả /api/tg-stream / /api/play)
+    wrap.innerHTML = `<video controls ${autoplay ? 'autoplay' : ''} playsinline preload="auto" src="${esc(url)}"></video>`;
+    if (autoplay) {
+      const v = wrap.querySelector('video');
+      if (v) {
+        const p = v.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {
+            // Nếu trình duyệt chặn unmuted autoplay, tự động phát muted để video luôn chạy ngay
+            v.muted = true;
+            v.play().catch(() => {});
+          });
+        }
+      }
+    }
     return { telegramUrl: null, note: '' };
   }
 
