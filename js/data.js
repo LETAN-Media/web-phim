@@ -31,6 +31,14 @@
     return tags;
   }
 
+  // ---- Điểm lượt xem: khởi đầu khác nhau theo mid (ổn định, worker
+  // tính giống hệt), mỗi lượt Phát +1 toàn site qua /api/views.
+  function seedViewsFor(mid) {
+    const n = Number(mid);
+    if (!Number.isFinite(n)) return 20;
+    return 15 + ((Math.abs(Math.floor(n)) * 53) % 70);
+  }
+
   // ---- Telegram feed -> movie objects (giữ nguyên mapping cũ) ----
   function mapFeedItem(x, i) {
     const date = x.date ? new Date(x.date * 1000) : null;
@@ -39,7 +47,8 @@
       title: x.title,
       desc: x.desc || '',
       year: date ? date.getFullYear() : '',
-      rating: null,
+      rating: 8.0,
+      views: seedViewsFor(x.mid),
       quality: 'TELE',
       genres: ['Mới cập nhật'],
       tags: tagsFor({ title: x.title, desc: x.desc }),
@@ -55,6 +64,26 @@
     tgMovies: [],
     tgState: 'loading', // loading | ok | unconfigured | error
     tgCount: 0,
+    viewsReady: false,
+
+    // Điểm thật từ server (KV). Gọi sau khi feed về + định kỳ mỗi phút.
+    // Server chưa có KV (501) thì giữ điểm seed local, không báo lỗi.
+    async loadViews() {
+      try {
+        const r = await fetch('/api/views');
+        const d = await r.json();
+        if (!d || d.ok !== true || !d.views) return;
+        let changed = false;
+        this.tgMovies.forEach(m => {
+          const mid = String(m.id).startsWith(TG_PREFIX) ? String(m.id).slice(TG_PREFIX.length) : null;
+          if (mid == null || !Number.isFinite(Number(d.views[mid]))) return;
+          const v = Math.floor(Number(d.views[mid]));
+          if (m.views !== v) { m.views = v; changed = true; }
+        });
+        this.viewsReady = true;
+        if (changed) emit('views:changed', { bulk: true });
+      } catch (e) { /* giữ điểm seed local */ }
+    },
 
     isTg(m) { return String(m && m.id).startsWith(TG_PREFIX); },
     custom() { const v = readJson(LS_CUSTOM, []); return Array.isArray(v) ? v : []; },
@@ -137,6 +166,7 @@
       // Chỉ render lại khi trạng thái hoặc nội dung feed thực sự đổi (giữ vị trí scroll)
       if (prevState === this.tgState && prevSig === this._feedSig) return;
       emit('data:changed');
+      if (this.tgState === 'ok') this.loadViews();
     },
   };
 

@@ -506,11 +506,86 @@ async function handleMediaProxy(env, request, chat, mid, url, ctx) {
   });
 }
 
+// ================= View counting (Cloudflare KV) =================
+// Mỗi phim Telegram có điểm riêng, mỗi lượt bấm Phát +1 toàn site.
+// Điểm khởi đầu khác nhau theo mid (ổn định, frontend tính giống hệt),
+// lượt xem thật cộng dồn từ đó. Thiếu KV -> 501, frontend giữ điểm seed.
+
+function seedViewsFor(mid) {
+  const n = Number(mid);
+  if (!Number.isFinite(n)) return 20;
+  return 15 + ((Math.abs(Math.floor(n)) * 53) % 70);
+}
+
+async function readViewCounts(env) {
+  if (!env.VIEWS || typeof env.VIEWS.get !== "function") return null;
+  try {
+    const raw = await env.VIEWS.get("v1");
+    if (!raw) return {};
+    const d = JSON.parse(raw);
+    return d && typeof d === "object" ? d : {};
+  } catch (e) {
+    console.error(`[worker] views read failed: ${e && e.message}`);
+    return {};
+  }
+}
+
+async function writeViewCounts(env, map) {
+  try {
+    await env.VIEWS.put("v1", JSON.stringify(map));
+    return true;
+  } catch (e) {
+    console.error(`[worker] views write failed: ${e && e.message}`);
+    return false;
+  }
+}
+
+// GET /api/views — điểm mọi video trong feed (tự seed video mới).
+async function handleViewsGet(env, request) {
+  if (request.method !== "GET" && request.method !== "HEAD") return errorJson("method not allowed", 405);
+  const counts = await readViewCounts(env);
+  if (counts === null) return jsonResponse({ ok: false, error: "views not configured" }, 501);
+  const items = await getFeedItems(env, request);
+  if (items === null) return errorJson("feed error", 502);
+  let dirty = false;
+  for (const x of items) {
+    const mid = String(x.mid);
+    if (!Number.isFinite(Number(counts[mid]))) {
+      counts[mid] = seedViewsFor(mid);
+      dirty = true;
+    }
+  }
+  if (dirty) await writeViewCounts(env, counts);
+  const views = {};
+  for (const x of items) views[String(x.mid)] = Number(counts[String(x.mid)]) || 0;
+  if (request.method === "HEAD") return new Response(null, { status: 200 });
+  return jsonResponse({ ok: true, views });
+}
+
+// POST /api/views/hit?mid=<n> — +1 lượt xem, chỉ nhận mid có trong feed.
+async function handleViewsHit(env, request, url) {
+  if (request.method !== "POST") return errorJson("method not allowed", 405);
+  const mid = String(url.searchParams.get("mid") || "");
+  if (!/^\d+$/.test(mid)) return errorJson("invalid mid", 400);
+  const items = await getFeedItems(env, request);
+  if (items === null) return errorJson("feed error", 502);
+  const found = items.some((x) => String(x.mid) === String(mid));
+  if (!found) return errorJson("not found", 404);
+  const counts = await readViewCounts(env);
+  if (counts === null) return jsonResponse({ ok: false, error: "views not configured" }, 501);
+  const cur = Number(counts[mid]);
+  counts[mid] = (Number.isFinite(cur) ? Math.floor(cur) : seedViewsFor(mid)) + 1;
+  await writeViewCounts(env, counts);
+  return jsonResponse({ ok: true, mid, views: counts[mid] });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/feed") return handleFeed(env, request);
+    if (url.pathname === "/api/views") return handleViewsGet(env, request);
+    if (url.pathname === "/api/views/hit") return handleViewsHit(env, request, url);
     if (url.pathname === "/api/play") return handlePlay(env, request, url, ctx);
     if (url.pathname.startsWith("/m/")) {
       const parts = url.pathname.slice(3).split("/").filter(Boolean);

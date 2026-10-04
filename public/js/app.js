@@ -1,7 +1,7 @@
 // App chính: router (hash), render các view, trang chi tiết, bottom nav, scroll-to-top.
 (function () {
   const $ = id => document.getElementById(id);
-  const { Icons, el, escapeHtml, mediaRow, emptyState, fillGrid, skeletonRow, skeletonGrid, ratingHtml } = UI;
+  const { Icons, el, escapeHtml, mediaRow, emptyState, fillGrid, skeletonRow, skeletonGrid, ratingHtml, viewsHtml } = UI;
 
   // URL dùng trong CSS url("...") — loại ký tự có thể phá cú pháp
   const cssUrl = u => `url("${String(u || '').replace(/["\\\n\r)]/g, '')}")`;
@@ -75,7 +75,8 @@
 
   function metaHtml(m, { withGenre = true } = {}) {
     const parts = [];
-    if (m.rating != null) parts.push(ratingHtml(m.rating, 14).replace('</span>', '<small style="color:var(--muted);font-weight:500">/10</small></span>'));
+    if (m.views != null) parts.push(viewsHtml(m.views, 14));
+    else if (m.rating != null) parts.push(ratingHtml(m.rating, 14).replace('</span>', '<small style="color:var(--muted);font-weight:500">/10</small></span>'));
     if (m.year) parts.push(`<span>${Icons.calendar()}${escapeHtml(m.year)}</span>`);
     if (withGenre && m.genres && m.genres[0]) parts.push(`<span class="genre">${Icons.tag()}${escapeHtml(m.genres[0])}</span>`);
     if (m.quality && m.quality !== 'TELE') parts.push(`<span>${escapeHtml(m.quality)}</span>`);
@@ -371,6 +372,25 @@
       ? `<a class="btn btn-ghost btn-sm" href="${escapeHtml(telegramUrl)}" target="_blank" rel="noopener">${Icons.external()} Mở trên Telegram</a>`
       : '';
     detail.scrollTo({ top: 0, behavior: 'smooth' });
+    countView(currentMovie);
+  }
+
+  // Mỗi lượt bấm Phát = +1 điểm toàn site (chỉ phim Telegram tg_<mid>).
+  // Prefetch mở trang không tính. Lỗi mạng thì bỏ qua, không chặn xem.
+  function countView(m) {
+    if (!m || typeof m.id !== 'string' || !m.id.startsWith('tg_')) return;
+    const mid = m.id.slice(3);
+    if (!/^\d+$/.test(mid)) return;
+    fetch(`/api/views/hit?mid=${encodeURIComponent(mid)}`, { method: 'POST' }).then(r => r.json()).then(d => {
+      if (!d || d.ok !== true || !Number.isFinite(Number(d.views))) return;
+      const v = Math.floor(Number(d.views));
+      const stored = Store.byId(m.id);
+      if (stored) stored.views = v;
+      if (currentMovie && String(currentMovie.id) === String(m.id)) {
+        currentMovie.views = v;
+        $('dMeta').innerHTML = metaHtml(currentMovie);
+      }
+    }).catch(() => {});
   }
 
   function renderBookmarkBtn() {
@@ -409,6 +429,13 @@
     renderBookmarkBtn();
     if (['bookmarks', 'home', 'settings'].includes(state.route)) RENDER[state.route]();
   });
+  // Điểm lượt xem về theo đợt (mở web / có lượt xem mới): vẽ lại danh sách
+  // và trang chi tiết đang mở. +1 lẻ sau khi bấm Phát đã cập nhật tại chỗ.
+  document.addEventListener('views:changed', e => {
+    if (!e.detail || !e.detail.bulk) return;
+    RENDER[state.route]();
+    if (!detail.hidden && currentMovie) openDetail(currentMovie.id);
+  });
 
   $('searchInput').addEventListener('input', e => { state.query = e.target.value; scheduleSearch(); });
   $('searchForm').addEventListener('submit', e => { e.preventDefault(); clearTimeout(searchTimer); runSearch(); $('searchInput').blur(); });
@@ -437,4 +464,5 @@
   onRoute();
   Store.loadFeed();
   setInterval(() => Store.loadFeed(), 60000); // tự refresh mỗi phút để thấy video mới mà không cần F5
+  setInterval(() => Store.loadViews(), 60000); // điểm lượt xem mới mỗi phút
 })();

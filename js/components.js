@@ -54,11 +54,18 @@
     return `<span class="rating">${Icons.star(size)}${escapeHtml(Number(rating).toFixed(1))}</span>`;
   }
 
+  // Điểm lượt xem: số nguyên + icon sao (không "/10" vì không phải thang 10)
+  function viewsHtml(views, size = 12) {
+    if (views == null || views === '') return '';
+    return `<span class="rating">${Icons.star(size)}${escapeHtml(String(Math.floor(Number(views))))}</span>`;
+  }
+
   function movieCard(m, opts = {}) {
     const landscape = !!(opts.landscape || m.landscape);
     const eager = !!opts.eager;
     const subParts = [];
-    if (m.rating != null) subParts.push(ratingHtml(m.rating, 12));
+    if (m.views != null) subParts.push(viewsHtml(m.views, 12));
+    else if (m.rating != null) subParts.push(ratingHtml(m.rating, 12));
     if (m.tgDate) subParts.push(`<span>${escapeHtml(m.tgDate)}</span>`);
     else if (m.year) subParts.push(`<span>${escapeHtml(m.year)}</span>`);
 
@@ -121,5 +128,5 @@
     container.appendChild(frag);
   }
 
-  window.UI = { Icons, escapeHtml, el, posterFallback, wireImage, ratingHtml, movieCard, mediaRow, sectionHeader, skeletonRow, skeletonGrid, emptyState, fillGrid };
+  window.UI = { Icons, escapeHtml, el, posterFallback, wireImage, ratingHtml, viewsHtml, movieCard, mediaRow, sectionHeader, skeletonRow, skeletonGrid, emptyState, fillGrid };
 })();

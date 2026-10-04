@@ -10,6 +10,12 @@
     "not_found_handling": "404-page"
   },
   "r2_buckets": [],
+  "kv_namespaces": [
+    {
+      "binding": "VIEWS",
+      "id": "1fb1558f3dfb439a8bacdc20623f5e19"
+    }
+  ],
   "vars": {
     "ENABLE_LEGACY_VIDEO_FALLBACK": "false",
     "LEGACY_ORIGIN": "https://phim.callboy76.live",
