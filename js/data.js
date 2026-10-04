@@ -35,8 +35,8 @@
   // tính giống hệt), mỗi lượt Phát +1 toàn site qua /api/views.
   function seedViewsFor(mid) {
     const n = Number(mid);
-    if (!Number.isFinite(n)) return 20;
-    return 15 + ((Math.abs(Math.floor(n)) * 53) % 70);
+    if (!Number.isFinite(n)) return 8000;
+    return 8000 + ((Math.abs(Math.floor(n)) * 7919) % 4000);
   }
 
   // ---- Telegram feed -> movie objects (giữ nguyên mapping cũ) ----

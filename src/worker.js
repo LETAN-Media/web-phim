@@ -457,8 +457,8 @@ async function handleMediaProxy(env, request, chat, mid, url, ctx) {
 
 function seedViewsFor(mid) {
   const n = Number(mid);
-  if (!Number.isFinite(n)) return 20;
-  return 15 + ((Math.abs(Math.floor(n)) * 53) % 70);
+  if (!Number.isFinite(n)) return 8000;
+  return 8000 + ((Math.abs(Math.floor(n)) * 7919) % 4000);
 }
 
 async function readViewCounts(env) {
