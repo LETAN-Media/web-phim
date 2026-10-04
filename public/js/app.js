@@ -115,10 +115,10 @@
       return s;
     }
     if (Store.tgState === 'error') {
-      return el(`<section class="section">${UI.sectionHeader('Mới cập nhật', { count: '' })}<p class="status error">Không kết nối được server đồng bộ Telegram.</p></section>`);
+      return el(`<section class="section">${UI.sectionHeader('Mới cập nhật', { count: '' })}<p class="status error">Không thể tải danh sách phim lúc này.</p></section>`);
     }
     if (!Store.tgMovies.length) {
-      return el(`<section class="section">${UI.sectionHeader('Mới cập nhật', { href: '#/new' })}<p class="status">Kênh chưa có video nào.</p></section>`);
+      return el(`<section class="section">${UI.sectionHeader('Mới cập nhật', { href: '#/new' })}<p class="status">Chưa có phim mới.</p></section>`);
     }
     return mediaRow('Mới cập nhật', Store.tgMovies, { href: '#/new' });
   }
@@ -154,7 +154,7 @@
     $('moviesReset').onclick = () => navigate('#/movies');
   }
 
-  // ===================== NEW (Telegram) =====================
+  // ===================== NEW =====================
   function renderNew() {
     const body = $('newBody');
     const st = $('newStatus');
@@ -162,19 +162,19 @@
     st.className = 'count status';
     if (Store.tgState === 'loading') { st.textContent = 'đang tải...'; body.appendChild(skeletonGrid(9)); return; }
     if (Store.tgState === 'unconfigured') {
-      st.textContent = 'chưa kết nối kênh';
-      body.appendChild(emptyState({ icon: Icons.tv(28), title: 'Chưa kết nối kênh Telegram', text: 'Cấu hình bot_token trong tg-config.json để tự đồng bộ video từ kênh.' }));
+      st.textContent = 'chưa có phim';
+      body.appendChild(emptyState({ icon: Icons.film(28), title: 'Chưa có phim mới', text: 'Danh sách phim mới sẽ được cập nhật sớm.' }));
       return;
     }
     if (Store.tgState === 'error') {
       st.textContent = 'lỗi kết nối'; st.classList.add('error');
-      body.appendChild(emptyState({ icon: Icons.tv(28), title: 'Không kết nối được server đồng bộ', text: 'Server telegram-sync có thể đang tắt. Thử lại sau.', actionHtml: '<button class="btn btn-ghost" id="newRetry">Thử lại</button>' }));
+      body.appendChild(emptyState({ icon: Icons.film(28), title: 'Không kết nối được máy chủ', text: 'Vui lòng thử lại sau.', actionHtml: '<button class="btn btn-ghost" id="newRetry">Thử lại</button>' }));
       $('newRetry').onclick = () => { Store.tgState = 'loading'; renderNew(); Store.loadFeed(); };
       return;
     }
-    st.textContent = Store.tgCount ? `${Store.tgCount} video` : 'kênh chưa có video';
+    st.textContent = Store.tgCount ? `${Store.tgCount} phim` : 'chưa có phim';
     if (!Store.tgMovies.length) {
-      body.appendChild(emptyState({ icon: Icons.tv(28), title: 'Kênh chưa có video nào', text: 'Up video lên kênh Telegram, web sẽ tự hiển thị trong khoảng 1 phút.' }));
+      body.appendChild(emptyState({ icon: Icons.film(28), title: 'Chưa có phim mới', text: 'Danh sách phim mới sẽ được cập nhật sớm.' }));
       return;
     }
     const grid = el('<div class="grid"></div>');
@@ -236,7 +236,6 @@
   function renderSettings() {
     const body = $('settingsBody');
     const s = Settings.all();
-    const tgLabel = { ok: `Đã kết nối · ${Store.tgCount} video`, loading: 'Đang kiểm tra...', unconfigured: 'Chưa cấu hình bot_token', error: 'Không kết nối được' }[Store.tgState];
     body.innerHTML = `
       <div class="settings-group">
         <h3>Phát video</h3>
@@ -247,15 +246,22 @@
         </button>
       </div>
       <div class="settings-group">
-        <h3>Quản lý</h3>
-        <a class="setting" href="admin.html"><span class="ico">${Icons.plus(18)}</span><span class="txt"><b>Đăng phim</b><small>Thêm phim thủ công (MP4 / YouTube / Telegram)</small></span><span class="chev">${Icons.chevron()}</span></a>
-        <a class="setting" href="upload.html"><span class="ico">${Icons.upload(18)}</span><span class="txt"><b>Up video</b><small>Up file dung lượng lớn lên server</small></span><span class="chev">${Icons.chevron()}</span></a>
-        <div class="setting" style="cursor:default"><span class="ico">${Icons.tv(18)}</span><span class="txt"><b>Kênh Telegram</b><small>${escapeHtml(tgLabel || '')}</small></span></div>
+        <h3>Dữ liệu</h3>
+        <div class="setting" style="cursor:default">
+          <span class="ico">${Icons.film(18)}</span>
+          <span class="txt"><b>Phim đã lưu</b><small>${Bookmarks.list().length} phim trong danh sách yêu thích</small></span>
+        </div>
+        <button class="setting danger" id="clearBookmarks" ${Bookmarks.list().length ? '' : 'disabled style="opacity:.5"'}>
+          <span class="ico">${Icons.trash(18)}</span>
+          <span class="txt"><b>Xóa danh sách đã lưu</b><small>Chỉ xóa bookmark trên thiết bị này</small></span>
+        </button>
       </div>
       <div class="settings-group">
-        <h3>Dữ liệu</h3>
-        <div class="setting" style="cursor:default"><span class="ico">${Icons.film(18)}</span><span class="txt"><b>Thư viện</b><small>${Store.all().length} phim · ${Store.custom().length} phim đăng thủ công · ${Bookmarks.list().length} đã lưu</small></span></div>
-        <button class="setting danger" id="clearBookmarks" ${Bookmarks.list().length ? '' : 'disabled style="opacity:.5"'}><span class="ico">${Icons.trash(18)}</span><span class="txt"><b>Xóa danh sách đã lưu</b><small>Chỉ xóa bookmark, không ảnh hưởng phim</small></span></button>
+        <h3>Thông tin</h3>
+        <div class="setting" style="cursor:default">
+          <span class="ico">${Icons.info(18)}</span>
+          <span class="txt"><b>PhimHay</b><small>Xem phim online chất lượng cao</small></span>
+        </div>
       </div>`;
     body.querySelector('[data-setting="autoplay"]').onclick = e => {
       const next = !(e.currentTarget.getAttribute('aria-checked') === 'true');
