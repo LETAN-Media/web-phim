@@ -108,3 +108,92 @@ git push origin main
 ```
 
 - `tg-config.json` và `.env` đã gitignore (không bao giờ commit).
+
+## 9. Dựng lại trên VPS mới (VPS cũ mất/hỏng)
+
+### Bước 0 — Sao lưu NGAY khi VPS cũ còn sống (quan trọng nhất)
+
+```bash
+# 1. Bot token (cất chỗ an toàn, KHÔNG đẩy lên GitHub)
+cat /root/web-phim/tg-config.json
+# 2. API_ID / API_HASH của Bot API server
+docker inspect telegram-bot-api --format '{{.Config.Env}}'
+# 3. Copy cả thư mục dữ liệu feed về máy mình
+scp -r root@VPS_CU:/var/www/phim/data ./backup-phim-data
+```
+
+- Không cần sao lưu `/root/tg-bot-api` (cache tạm ~242M, máy mới tự tải lại).
+- Quyền Cloudflare: chỉ cần đăng nhập được tài khoản Cloudflare
+  (KV/R2/secret/route đều nằm trong tài khoản, không nằm trên VPS).
+
+### Bước 1 — Máy mới (Ubuntu): cài công cụ
+
+```bash
+apt update && apt install -y docker.io git python3 cron
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt install -y nodejs
+npm i -g pm2 wrangler
+```
+
+### Bước 2 — Clone repo
+
+```bash
+git clone https://github.com/LETAN-Media/web-phim.git /root/web-phim
+cd /root/web-phim
+```
+
+### Bước 3 — Chạy Telegram Bot API server (docker)
+
+```bash
+mkdir -p /root/tg-bot-api
+docker run -d --name telegram-bot-api --restart always \
+  -p 127.0.0.1:8081:8081 \
+  -v /root/tg-bot-api:/var/lib/telegram-bot-api \
+  -e TELEGRAM_API_ID=<API_ID buoc 0> \
+  -e TELEGRAM_API_HASH=<API_HASH buoc 0> \
+  -e TELEGRAM_LOCAL=1 \
+  aiogram/telegram-bot-api:latest
+```
+
+- `API_ID`/`API_HASH`: lấy ở Bước 0, hoặc tạo mới tại my.telegram.org.
+- Kiểm tra: `curl -s http://127.0.0.1:8081/ | head -c 100`
+
+### Bước 4 — Khôi phục config + dữ liệu feed
+
+```bash
+# tg-config.json (dán bot_token đã sao lưu)
+cat > /root/web-phim/tg-config.json <<'EOF'
+{"bot_token": "<BOT_TOKEN>", "api_base": "http://127.0.0.1:8081", "file_base": "http://127.0.0.1:8081"}
+EOF
+# dữ liệu feed đã sao lưu
+mkdir -p /var/www/phim/data/thumbs
+cp ./backup-phim-data/feed.json /var/www/phim/data/feed.json
+cp ./backup-phim-data/thumbs/* /var/www/phim/data/thumbs/
+cp ./backup-phim-data/tg-offset.txt /var/www/phim/data/ 2>/dev/null; true
+```
+
+- Plan B (mất hẳn feed gốc): web vẫn cứu được từ GitHub —
+  copy `public/thumbs/<mid>.jpg` thành `/var/www/phim/data/thumbs/<mid>_poster`,
+  rồi tạo entry cho từng mid trong `/var/www/phim/data/feed.json`
+  (lấy title/desc/date/duration từ `public/data/feed.json`, `file_id` để rỗng).
+  Phim cũ hiện web đầy đủ; chỉ không tải lại thumb từ Telegram được
+  (không cần vì file đã có sẵn).
+
+### Bước 5 — Chạy service + cron + deploy
+
+```bash
+pm2 start /root/web-phim/telegram-sync.py --name telegram-sync --interpreter python3
+pm2 save && pm2 startup   # tự chạy lại khi reboot (làm theo hướng dẫn nó in ra)
+crontab -l | grep -q auto-sync-deploy || (crontab -l; echo "*/2 * * * * /root/web-phim/scripts/auto-sync-deploy.sh") | crontab -
+wrangler login
+cd /root/web-phim && python3 scripts/sync-feed-to-public.py && wrangler deploy
+```
+
+### Bước 6 — Kiểm tra
+
+- Làm hết mục 7 (feed đủ 9 phim, views, health).
+- Up thử 1 video + 1 ảnh lên kênh Telegram → ~2 phút sau web hiện.
+
+### Ghi chú
+
+- Không cần cài nginx cho web (domain đã trỏ thẳng Cloudflare Worker).
+- `upload-server.py` (up file lớn) là tùy chọn, không bắt buộc để web chạy.
