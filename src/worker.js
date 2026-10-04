@@ -1,5 +1,6 @@
 // Cloudflare Worker: static frontend + Northflank MTProto gateway proxy.
-// Video stays on Telegram. No R2 usage. Server-side signed URLs, legacy VPS fallback.
+// Video stays on Telegram (gateway MTProto + R2 cache). Không phụ thuộc VPS:
+// mọi API, feed, thumb, điểm xem đều do Worker + Cloudflare phục vụ.
 // Standards: guard clauses / early return, no nested if/else, full error handling.
 
 function jsonResponse(obj, status = 200) {
@@ -17,40 +18,13 @@ function errorJson(message, status = 500) {
   return jsonResponse({ ok: false, error: message }, status);
 }
 
-function isLegacyFallbackEnabled(env) {
-  const v = String(env.ENABLE_LEGACY_VIDEO_FALLBACK || "false").toLowerCase();
-  return v === "true" || v === "1" || v === "on";
-}
-
-function legacyOrigin(env) {
-  const o = String(env.LEGACY_ORIGIN || "").trim().replace(/\/+$/, "");
-  if (!o) return null;
-  if (!/^https?:\/\//i.test(o)) return null;
-  return o;
-}
-
 async function handleFeed(env, request) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return errorJson("method not allowed", 405);
   }
   const data = await getStaticFeed(env, request);
 
-  if (!data) {
-    if (isLegacyFallbackEnabled(env)) {
-      const origin = legacyOrigin(env);
-      if (!origin) return jsonResponse({ ok: true, configured: false, count: 0, items: [] });
-      try {
-        const r = await fetch(`${origin}/api/feed`, { redirect: "follow" });
-        if (!r.ok) return errorJson(`legacy feed HTTP ${r.status}`, 502);
-        const legacy = await r.json();
-        return jsonResponse(legacy);
-      } catch (e) {
-        console.error(`[worker] legacy feed failed: ${e && e.message}`);
-        return errorJson("legacy feed error", 502);
-      }
-    }
-    return jsonResponse({ ok: true, configured: true, count: 0, items: [] });
-  }
+  if (!data) return jsonResponse({ ok: true, configured: true, count: 0, items: [] });
 
   if (request.method === "HEAD") return new Response(null, { status: 200 });
   if (isNewGatewayEnabled(env)) {
@@ -67,39 +41,21 @@ async function handleFeed(env, request) {
   return jsonResponse(data);
 }
 
-// Compatibility: /api/tg-stream?mid= -> gateway play path; /api/tg-thumb?mid= -> static thumb.
-async function handleLegacyTgApi(env, request, url) {
+// Compat cho URL cũ: /api/tg-stream?mid= -> /api/play; /api/tg-thumb?mid= -> thumb tĩnh.
+async function handleCompatTgApi(env, request, url) {
   const mid = url.searchParams.get("mid");
   if (!mid) return errorJson("missing mid", 400);
   const isThumb = url.pathname === "/api/tg-thumb";
 
   const items = await getFeedItems(env, request);
-  if (items === null) {
-    if (!isLegacyFallbackEnabled(env)) return errorJson("feed error", 502);
-    return proxyLegacy(env, url.pathname + url.search);
-  }
+  if (items === null) return errorJson("feed error", 502);
   const item = items.find((x) => String(x.mid) === String(mid));
-  if (!item) {
-    if (!isLegacyFallbackEnabled(env)) return errorJson("not found", 404);
-    return proxyLegacy(env, url.pathname + url.search);
-  }
+  if (!item) return errorJson("not found", 404);
   if (isThumb) {
     if (item.thumb) return Response.redirect(new URL(item.thumb, url).toString(), 302);
-    if (!isLegacyFallbackEnabled(env)) return errorJson("not found", 404);
-    return proxyLegacy(env, url.pathname + url.search);
+    return errorJson("not found", 404);
   }
   return Response.redirect(new URL(`/api/play?mid=${item.mid}`, url).toString(), 302);
-}
-
-async function proxyLegacy(env, pathWithQuery) {
-  const origin = legacyOrigin(env);
-  if (!origin) return errorJson("legacy not configured", 502);
-  try {
-    return await fetch(`${origin}${pathWithQuery}`, { redirect: "follow" });
-  } catch (e) {
-    console.error(`[worker] legacy proxy failed: ${e && e.message}`);
-    return errorJson("legacy error", 502);
-  }
 }
 
 // ================= Gateway (Northflank MTProto) integration =================
@@ -409,12 +365,7 @@ async function handlePlay(env, request, url, ctx) {
   if (request.method !== "GET" && request.method !== "HEAD") return errorJson("method not allowed", 405);
   const mid = url.searchParams.get("mid");
   if (!mid || !/^\d+$/.test(mid)) return errorJson("invalid mid", 400);
-  if (!isNewGatewayEnabled(env)) {
-    if (!isLegacyFallbackEnabled(env)) return errorJson("gateway disabled", 503);
-    const origin = legacyOrigin(env);
-    if (!origin) return errorJson("legacy not configured", 502);
-    return Response.redirect(`${origin}/api/tg-stream?mid=${mid}`, 302);
-  }
+  if (!isNewGatewayEnabled(env)) return errorJson("gateway disabled", 503);
   const chat = channelChatId(env);
   if (!chat) return errorJson("channel not configured", 500);
   const items = await getFeedItems(env, request);
@@ -437,7 +388,7 @@ async function handlePlay(env, request, url, ctx) {
   return Response.redirect(new URL(signed, url).toString(), 302);
 }
 
-// GET/HEAD /m/<chat>/<mid>?exp=..&sig=.. — verify then proxy gateway, fallback legacy.
+// GET/HEAD /m/<chat>/<mid>?exp=..&sig=.. — verify rồi proxy gateway/R2.
 async function handleMediaProxy(env, request, chat, mid, url, ctx) {
   if (request.method !== "GET" && request.method !== "HEAD") return errorJson("method not allowed", 405);
   if (!/^-?\d+$/.test(chat || "") || !/^\d+$/.test(mid || "")) return errorJson("invalid path", 400);
@@ -451,7 +402,7 @@ async function handleMediaProxy(env, request, chat, mid, url, ctx) {
   const range = request.headers.get("range");
   const inm = request.headers.get("if-none-match");
 
-  // Source order: R2 persistent cache -> Northflank/Telegram -> legacy VPS.
+  // Source order: R2 persistent cache -> Northflank/Telegram (gateway).
   const exp = url.searchParams.get("exp") || "";
   const sig = url.searchParams.get("sig") || "";
 
@@ -495,15 +446,8 @@ async function handleMediaProxy(env, request, chat, mid, url, ctx) {
   }
   if (upstreamResp && upstreamResp.ok) return withVideoSource(upstreamResp, "TELEGRAM");
   const status = upstreamResp ? upstreamResp.status : 0;
-  console.error(`[worker] gateway HTTP ${status}, trying legacy fallback`);
-  if (!isLegacyFallbackEnabled(env)) return errorJson("gateway error", 502);
-  const legacy = legacyOrigin(env);
-  if (!legacy) return errorJson("gateway error", 502);
-  const loc = `${legacy}/api/tg-stream?mid=${mid}`;
-  return new Response(null, {
-    status: 302,
-    headers: { location: loc, "x-video-source": "LEGACY" },
-  });
+  console.error(`[worker] gateway HTTP ${status}, no fallback configured`);
+  return errorJson("gateway error", 502);
 }
 
 // ================= View counting (Cloudflare KV) =================
@@ -593,7 +537,7 @@ export default {
       return handleMediaProxy(env, request, parts[0], parts[1], url, ctx);
     }
     if (url.pathname === "/api/tg-stream" || url.pathname === "/api/tg-thumb") {
-      return handleLegacyTgApi(env, request, url);
+      return handleCompatTgApi(env, request, url);
     }
     if (url.pathname === "/api/health") return jsonResponse({ ok: true });
 

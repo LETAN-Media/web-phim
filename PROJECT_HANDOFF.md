@@ -1,28 +1,39 @@
 # PROJECT HANDOFF — WEB PHIM
 
-> Cập nhật: 2026-09-20 ~23:05 UTC (Codebuff session 2, sau khi R2 persistent cache PASS).
-> Không chứa secret. Secret nằm trong /root/web-phim/.env, Cloudflare secrets, Northflank ENV.
+> Cập nhật: 2026-10-04 (cắt fallback VPS + điểm lượt xem KV).
+> Không chứa secret. Secret nằm trong Cloudflare secrets + Northflank ENV (tg-config.json/.env trên VPS đã gitignore).
+>
+> ## WEB KHÔNG PHỤ THUỘC VPS
+> Web chạy 100% trên Cloudflare (Worker + R2 + KV) và Northflank gateway.
+> VPS chỉ còn vai trò "máy up bài + deploy": nhận video/poster từ Telegram
+> (telegram-sync.py), sync vào public/ rồi `wrangler deploy`.
+> VPS mất hẳn → web vẫn chạy đủ (xem phim, bìa, điểm, đếm view); chỉ mất:
+> up video mới, đổi tên/bìa, deploy bản mới. Khôi phục: clone repo GitHub
+> sang máy khác, `wrangler login`, `wrangler deploy` (KV/R2/secrets nằm
+> trong tài khoản Cloudflare, không nằm trên VPS).
 
-## Kiến trúc hiện tại (R2 persistent cache ĐÃ HOẠT ĐỘNG)
+## Kiến trúc hiện tại (R2 persistent cache + KV views, KHÔNG fallback VPS)
 
 ```
 Browser
-  ↓ https://phim.callboy76.live
+  ↓ https://phim.callboy76.live  (Cloudflare → Worker "web-phim", không qua VPS)
 Cloudflare Worker "web-phim" (src/worker.js)
+  ├─ /api/feed: feed tĩnh public/data/feed.json
+  ├─ /api/views + /api/views/hit: điểm lượt xem (KV binding VIEWS)
   ├─ /api/play: ký HMAC URL (TTL 6h) + prewarm 2MB đầu + trigger mirror
   └─ /m/<chat>/<mid>: verify sig → source order:
        1. Edge prewarm (Cache API, chỉ cửa sổ 2MB đầu, nguồn Telegram)
        2. R2 new account (S3 SigV4, key videos/<chat>/<mid>.mp4)  → X-Video-Source: R2
        3. Northflank gateway (MTProto)                            → X-Video-Source: TELEGRAM
           (MISS: stream ngay + fire-and-forget POST /v1/cache để mirror nền)
-       4. Legacy VPS 302                                          → X-Video-Source: LEGACY
 Northflank gateway: Telethon MTProto (Telegram = MASTER STORAGE)
   └─ background mirror: iter_media_range → S3 multipart 8MB → R2, verify size, READY
 ```
 
 - R2 = persistent read-through cache theo nhu cầu (chỉ video được xem mới được mirror).
 - KHÔNG dùng R2 native binding account cũ; Worker dùng S3 SigV4 với credentials account mới.
-- Telegram KHÔNG BỊ xóa/thay thế; legacy fallback vẫn ON; VPS cũ vẫn sống.
+- Telegram là master storage. Nhánh fallback VPS ĐÃ XÓA khỏi worker (2026-10-04):
+  không còn biến ENABLE_LEGACY_*/LEGACY_ORIGIN, không còn request nào về VPS lúc chạy.
 
 ## Repo / git
 
@@ -68,8 +79,8 @@ Northflank gateway: Telethon MTProto (Telegram = MASTER STORAGE)
 
 ## Rollback
 
-- Worker: `wrangler rollback` hoặc deploy lại commit `5266f70` (pre-gateway-cutover stable) /
-  `d38f5c5` (VPS-verified). R2 MISS tự rơi về gateway nên lỗi R2 không chết trang.
+- Worker: `wrangler rollback` hoặc deploy lại commit cũ. R2 MISS tự rơi về gateway nên lỗi R2 không chết trang.
 - Gateway: redeploy `c28c080` (trước mirror) — mirror DISABLED không ảnh hưởng streaming.
-- DNS cuối cùng: record phim → 172.237.1.240 (VPS nginx sống, legacy fallback ON).
-- KHÔNG xóa: VPS, /var/www/phim, /root/tg-bot-api, Telegram data, feed, R2 bucket mới/cũ.
+- VPS (máy up bài/deploy, KHÔNG nằm trong đường chạy web):
+  pm2 `telegram-sync`, `phim-upload`, `/var/www/phim`, `/root/tg-bot-api`, `feed.json`.
+  Giữ nguyên cho đến khi chủ xác nhận xóa.
