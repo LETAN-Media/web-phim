@@ -114,12 +114,11 @@ git push origin main
 ### Bước 0 — Sao lưu NGAY khi VPS cũ còn sống (quan trọng nhất)
 
 ```bash
-# 1. Bot token (cất chỗ an toàn, KHÔNG đẩy lên GitHub)
-cat /root/web-phim/tg-config.json
-# 2. API_ID / API_HASH của Bot API server
-docker inspect telegram-bot-api --format '{{.Config.Env}}'
-# 3. Copy cả thư mục dữ liệu feed về máy mình
-scp -r root@VPS_CU:/var/www/phim/data ./backup-phim-data
+# 1 gói duy nhất: code + config + dữ liệu feed (KHÔNG đẩy file này lên GitHub)
+cd / && tar -czf backup-web-phim-$(date +%F).tar.gz root/web-phim var/www/phim
+# 2. API_ID / API_HASH của Bot API server (lưu kèm vào chỗ an toàn)
+docker inspect telegram-bot-api --format '{{.Config.Env}}' > /root/web-phim-API-env.txt
+ls -lh /backup-web-phim-*.tar.gz
 ```
 
 - Không cần sao lưu `/root/tg-bot-api` (cache tạm ~242M, máy mới tự tải lại).
