@@ -139,114 +139,10 @@ async function getFeedItems(env, request) {
   return data.items || [];
 }
 
-// ================= R2 persistent cache (new account, S3 SigV4) =================
-// R2 is a read-through cache only; Telegram stays master storage. On R2 MISS the
-// bytes stream from the Northflank gateway (MTProto) and a background mirror is
-// triggered fire-and-forget on the gateway. Old-account R2 is never touched.
-// Credentials arrive as Worker secrets; missing config degrades to gateway-only.
-
-function r2Config(env) {
-  const endpoint = String(env.R2_NEW_ENDPOINT || "").trim().replace(/\/+$/, "");
-  const accessKey = String(env.R2_NEW_ACCESS_KEY_ID || "").trim();
-  const secretKey = String(env.R2_NEW_SECRET_ACCESS_KEY || "").trim();
-  const bucket = String(env.R2_NEW_BUCKET || "").trim();
-  if (!endpoint || !accessKey || !secretKey || !bucket) return null;
-  if (!/^https:\/\//i.test(endpoint)) return null;
-  return { endpoint, accessKey, secretKey, bucket };
-}
-
-function r2ObjectKey(chat, mid) {
-  return `videos/${chat}/${mid}.mp4`;
-}
-
-async function sha256Hex(data) {
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function hmacRaw(keyBytes, msg) {
-  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg));
-  return new Uint8Array(sig);
-}
-
-function r2CanonicalUri(bucket, key) {
-  const enc = (s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
-  return `/${bucket}/${key.split("/").map(enc).join("/")}`;
-}
-
-// GET/HEAD one object. Returns the upstream Response (streamable body) or null
-// on MISS/error/timeout. Never throws: R2 problems must never break playback.
-async function r2Fetch(env, method, key, opts = {}) {
-  const cfg = r2Config(env);
-  if (!cfg) return null;
-  try {
-    const host = new URL(cfg.endpoint).host;
-    const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
-    const dateStamp = amzDate.slice(0, 8);
-    const canonicalUri = r2CanonicalUri(cfg.bucket, key);
-    const headerMap = {
-      host,
-      "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
-      "x-amz-date": amzDate,
-    };
-    const signedNames = Object.keys(headerMap).sort();
-    const canonicalRequest = [
-      method,
-      canonicalUri,
-      "",
-      signedNames.map((n) => `${n}:${headerMap[n]}\n`).join(""),
-      signedNames.join(";"),
-      "UNSIGNED-PAYLOAD",
-    ].join("\n");
-    const scope = `${dateStamp}/auto/s3/aws4_request`;
-    const stringToSign = [
-      "AWS4-HMAC-SHA256",
-      amzDate,
-      scope,
-      await sha256Hex(new TextEncoder().encode(canonicalRequest)),
-    ].join("\n");
-    const kDate = await hmacRaw(new TextEncoder().encode(`AWS4${cfg.secretKey}`), dateStamp);
-    const kRegion = await hmacRaw(kDate, "auto");
-    const kService = await hmacRaw(kRegion, "s3");
-    const kSigning = await hmacRaw(kService, "aws4_request");
-    const signature = [...await hmacRaw(kSigning, stringToSign)]
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-    const headers = {
-      authorization: `AWS4-HMAC-SHA256 Credential=${cfg.accessKey}/${scope}, SignedHeaders=${signedNames.join(";")}, Signature=${signature}`,
-      "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
-      "x-amz-date": amzDate,
-    };
-    if (opts.range) headers.range = opts.range;
-    const fetchOpts = { method, headers };
-    if (opts.timeoutMs) fetchOpts.signal = AbortSignal.timeout(opts.timeoutMs);
-    const resp = await fetch(`${cfg.endpoint}${canonicalUri}`, fetchOpts);
-    if (!resp.ok) return null;
-    return resp;
-  } catch (e) {
-    console.error(`[worker] r2 ${method} ${key} failed: ${e && e.message}`);
-    return null;
-  }
-}
-
 function withVideoSource(resp, source) {
   const headers = new Headers(resp.headers);
   headers.set("x-video-source", source);
   return new Response(resp.body, { status: resp.status, headers });
-}
-
-async function triggerMirror(env, origin, chat, mid, exp, sig) {
-  try {
-    const r = await fetch(
-      `${origin}/v1/cache/${chat}/${mid}?exp=${encodeURIComponent(exp)}&sig=${encodeURIComponent(sig)}`,
-      { method: "POST" }
-    );
-    const body = await r.json().catch(() => ({}));
-    console.log(`[worker] mirror trigger ${chat}/${mid}: http=${r.status} cache=${body.cache}`);
-  } catch (e) {
-    console.error(`[worker] mirror trigger failed: ${e && e.message}`);
-  }
 }
 
 // ================= First-chunk prewarm (Cache API, internal only) =================
@@ -301,13 +197,6 @@ async function prewarmParts(env, origin, chat, mid, exp, sig) {
       console.error(`[worker] prewarm ${chat}/${mid}/${part} failed: ${err && err.message}`);
     }
   }
-}
-
-// On play: keep the 2MB edge prewarm, then fire the background mirror so the
-// video is persisted to R2 for future viewers. Both are fire-and-forget.
-async function prewarmOrMirror(env, origin, chat, mid, exp, sig) {
-  await prewarmParts(env, origin, chat, mid, exp, sig);
-  await triggerMirror(env, origin, chat, mid, exp, sig);
 }
 
 async function serveFromPrewarm(chat, mid, start, end) {
@@ -379,7 +268,7 @@ async function handlePlay(env, request, url, ctx) {
     const exp = new URL(signed, url).searchParams.get("exp") || "";
     const sig = new URL(signed, url).searchParams.get("sig") || "";
     if (origin && exp && sig && ctx && typeof ctx.waitUntil === "function") {
-      ctx.waitUntil(prewarmOrMirror(env, origin, chat, mid, exp, sig));
+      ctx.waitUntil(prewarmParts(env, origin, chat, mid, exp, sig));
     }
   } catch (err) {
     console.error(`[worker] prewarm schedule failed: ${err && err.message}`);
@@ -388,7 +277,7 @@ async function handlePlay(env, request, url, ctx) {
   return Response.redirect(new URL(signed, url).toString(), 302);
 }
 
-// GET/HEAD /m/<chat>/<mid>?exp=..&sig=.. — verify rồi proxy gateway/R2.
+// GET/HEAD /m/<chat>/<mid>?exp=..&sig=.. — verify rồi proxy trực tiếp gateway Telegram.
 async function handleMediaProxy(env, request, chat, mid, url, ctx) {
   if (request.method !== "GET" && request.method !== "HEAD") return errorJson("method not allowed", 405);
   if (!/^-?\d+$/.test(chat || "") || !/^\d+$/.test(mid || "")) return errorJson("invalid path", 400);
@@ -402,11 +291,10 @@ async function handleMediaProxy(env, request, chat, mid, url, ctx) {
   const range = request.headers.get("range");
   const inm = request.headers.get("if-none-match");
 
-  // Source order: R2 persistent cache -> Northflank/Telegram (gateway).
   const exp = url.searchParams.get("exp") || "";
   const sig = url.searchParams.get("sig") || "";
 
-  // Fast path 1: small ranges inside the 2MB prewarm window come from Cache API.
+  // Fast path: small ranges inside the 2MB prewarm window come from Cache API.
   if (request.method === "GET") {
     const probe = /^bytes=(\d+)-(\d+)$/.exec((range || "").trim());
     if (probe) {
@@ -419,20 +307,7 @@ async function handleMediaProxy(env, request, chat, mid, url, ctx) {
     }
   }
 
-  // Fast path 2: R2 persistent cache (HEAD->GET keeps misses at one lookup).
-  const r2Key = r2ObjectKey(chat, mid);
-  const r2Resp = await r2Fetch(env, request.method, r2Key, {
-    range: range || undefined,
-    timeoutMs: 8000,
-  });
-  if (r2Resp) return withVideoSource(r2Resp, "R2");
-
-  // MISS: stream from the gateway now; trigger the background mirror so
-  // future viewers hit R2. Never make the user wait for the mirror.
-  if (ctx && typeof ctx.waitUntil === "function") {
-    ctx.waitUntil(triggerMirror(env, origin, chat, mid, exp, sig));
-  }
-
+  // Stream directly from Telegram via Northflank gateway.
   const upstream = `${origin}/v1/video/${chat}/${mid}?exp=${encodeURIComponent(exp)}&sig=${encodeURIComponent(sig)}`;
   const headers = new Headers();
   if (range) headers.set("range", range);
