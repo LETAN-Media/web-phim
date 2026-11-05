@@ -21,44 +21,106 @@ function errorJson(message, status = 500) {
   return jsonResponse({ ok: false, error: message }, status);
 }
 
-async function handleFeed(env, request) {
+async function fetchDynamicFeed(env) {
+  const origin = gatewayOrigin(env);
+  const chat = channelChatId(env);
+  if (!origin || !chat) return null;
+  try {
+    const resp = await fetch(`${origin}/v1/feed/${chat}`, {
+      signal: AbortSignal.timeout(4000),
+      cf: { cacheTtl: 60 },
+    });
+    if (!resp.ok) return null;
+    const json = await resp.json();
+    return json && json.ok && Array.isArray(json.items) ? json : null;
+  } catch (e) {
+    console.error(`[worker] dynamic feed fetch failed: ${e && e.message}`);
+    return null;
+  }
+}
+
+async function handleFeed(env, request, ctx) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return errorJson("method not allowed", 405);
   }
-  const data = await getStaticFeed(env, request);
+  if (request.method === "HEAD") return new Response(null, { status: 200 });
+
+  let data = null;
+
+  // 1. Try dynamic feed from Gateway (Real-time from Telegram)
+  if (isNewGatewayEnabled(env)) {
+    data = await fetchDynamicFeed(env);
+    if (data && env.VIEWS && ctx && typeof ctx.waitUntil === "function") {
+      ctx.waitUntil(env.VIEWS.put("feed:v1", JSON.stringify(data)));
+    }
+  }
+
+  // 2. Fallback to Cloudflare KV cache
+  if (!data && env.VIEWS && typeof env.VIEWS.get === "function") {
+    try {
+      const kvRaw = await env.VIEWS.get("feed:v1");
+      if (kvRaw) data = JSON.parse(kvRaw);
+    } catch (e) {}
+  }
+
+  // 3. Fallback to static asset feed
+  if (!data) {
+    data = await getStaticFeed(env, request);
+  }
 
   if (!data) return jsonResponse({ ok: true, configured: true, count: 0, items: [] });
 
-  if (request.method === "HEAD") return new Response(null, { status: 200 });
-  if (isNewGatewayEnabled(env)) {
-    const chat = channelChatId(env);
-    if (chat && Array.isArray(data.items)) {
-      data.items = data.items.map((x) => ({
-        ...x,
-        chat_id: chat,
-        message_id: x.mid,
-        stream: `/api/play?mid=${x.mid}`,
-      }));
-    }
+  const chat = channelChatId(env);
+  if (chat && Array.isArray(data.items)) {
+    data.items = data.items.map((x) => ({
+      ...x,
+      chat_id: chat,
+      message_id: x.mid,
+      stream: `/api/play?mid=${x.mid}`,
+    }));
   }
   return jsonResponse(data);
 }
 
-// Compat cho URL cũ: /api/tg-stream?mid= -> /api/play; /api/tg-thumb?mid= -> thumb tĩnh.
+async function handleThumb(env, request, mid) {
+  if (request.method !== "GET" && request.method !== "HEAD") return errorJson("method not allowed", 405);
+  if (!mid || !/^\d+$/.test(mid)) return errorJson("invalid mid", 400);
+  const origin = gatewayOrigin(env);
+  const chat = channelChatId(env);
+  if (origin && chat) {
+    try {
+      const upstream = `${origin}/v1/thumb/${chat}/${mid}`;
+      const resp = await fetch(upstream, {
+        method: request.method,
+        cf: { cacheEverything: true, cacheTtl: 604800 },
+      });
+      if (resp.ok) {
+        const headers = new Headers(resp.headers);
+        headers.set("cache-control", "public, max-age=604800, s-maxage=604800, immutable");
+        headers.set("access-control-allow-origin", "*");
+        return new Response(resp.body, { status: 200, headers });
+      }
+    } catch (e) {
+      console.error(`[worker] dynamic thumb failed: ${e && e.message}`);
+    }
+  }
+  if (env.ASSETS) {
+    try {
+      const staticResp = await env.ASSETS.fetch(new Request(new URL(`/thumbs/${mid}.jpg`, request.url)));
+      if (staticResp.ok) return staticResp;
+    } catch (e) {}
+  }
+  return errorJson("thumbnail not found", 404);
+}
+
+// Compat cho URL cũ: /api/tg-stream?mid= -> /api/play; /api/tg-thumb?mid= -> thumb.
 async function handleCompatTgApi(env, request, url) {
   const mid = url.searchParams.get("mid");
   if (!mid) return errorJson("missing mid", 400);
-  const isThumb = url.pathname === "/api/tg-thumb";
-
-  const items = await getFeedItems(env, request);
-  if (items === null) return errorJson("feed error", 502);
-  const item = items.find((x) => String(x.mid) === String(mid));
-  if (!item) return errorJson("not found", 404);
-  if (isThumb) {
-    if (item.thumb) return Response.redirect(new URL(item.thumb, url).toString(), 302);
-    return errorJson("not found", 404);
+  if (url.pathname === "/api/tg-thumb") {
+    return handleThumb(env, request, mid);
   }
-  return Response.redirect(new URL(`/api/play?mid=${item.mid}`, url).toString(), 302);
+  return Response.redirect(new URL(`/api/play?mid=${mid}`, url).toString(), 302);
 }
 
 // ================= Gateway (Northflank MTProto) integration =================
@@ -137,6 +199,15 @@ async function getStaticFeed(env, request) {
 }
 
 async function getFeedItems(env, request) {
+  if (env.VIEWS && typeof env.VIEWS.get === "function") {
+    try {
+      const kvRaw = await env.VIEWS.get("feed:v1");
+      if (kvRaw) {
+        const d = JSON.parse(kvRaw);
+        if (d && Array.isArray(d.items) && d.items.length > 0) return d.items;
+      }
+    } catch (e) {}
+  }
   const data = await getStaticFeed(env, request);
   if (!data) return null;
   return data.items || [];
@@ -420,7 +491,15 @@ export default {
 
     const url = new URL(request.url);
 
-    if (url.pathname === "/api/feed") return handleFeed(env, request);
+    if (url.pathname === "/api/feed") return handleFeed(env, request, ctx);
+    if (url.pathname === "/api/thumb") {
+      const mid = url.searchParams.get("mid");
+      return handleThumb(env, request, mid);
+    }
+    if (url.pathname.startsWith("/thumbs/")) {
+      const m = url.pathname.match(/\/thumbs\/(\d+)/);
+      if (m) return handleThumb(env, request, m[1]);
+    }
     if (url.pathname === "/api/views") return handleViewsGet(env, request);
     if (url.pathname === "/api/views/hit") return handleViewsHit(env, request, url);
     if (url.pathname === "/api/play") return handlePlay(env, request, url, ctx);
