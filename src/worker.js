@@ -21,24 +21,6 @@ function errorJson(message, status = 500) {
   return jsonResponse({ ok: false, error: message }, status);
 }
 
-async function fetchDynamicFeed(env) {
-  const origin = gatewayOrigin(env);
-  const chat = channelChatId(env);
-  if (!origin || !chat) return null;
-  try {
-    const resp = await fetch(`${origin}/v1/feed/${chat}`, {
-      signal: AbortSignal.timeout(4000),
-      cf: { cacheTtl: 60 },
-    });
-    if (!resp.ok) return null;
-    const json = await resp.json();
-    return json && json.ok && Array.isArray(json.items) ? json : null;
-  } catch (e) {
-    console.error(`[worker] dynamic feed fetch failed: ${e && e.message}`);
-    return null;
-  }
-}
-
 async function handleFeed(env, request, ctx) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return errorJson("method not allowed", 405);
@@ -47,23 +29,15 @@ async function handleFeed(env, request, ctx) {
 
   let data = null;
 
-  // 1. Try dynamic feed from Gateway (Real-time from Telegram)
-  if (isNewGatewayEnabled(env)) {
-    data = await fetchDynamicFeed(env);
-    if (data && env.VIEWS && ctx && typeof ctx.waitUntil === "function") {
-      ctx.waitUntil(env.VIEWS.put("feed:v1", JSON.stringify(data)));
-    }
-  }
-
-  // 2. Fallback to Cloudflare KV cache
-  if (!data && env.VIEWS && typeof env.VIEWS.get === "function") {
+  // 1. Kiểm tra Cloudflare KV trước (nếu bạn có chỉnh sửa danh sách phim trong KV)
+  if (env.VIEWS && typeof env.VIEWS.get === "function") {
     try {
       const kvRaw = await env.VIEWS.get("feed:v1");
       if (kvRaw) data = JSON.parse(kvRaw);
     } catch (e) {}
   }
 
-  // 3. Fallback to static asset feed
+  // 2. Mặc định: Phục vụ danh sách 16 phim chuẩn từ public/data/feed.json
   if (!data) {
     data = await getStaticFeed(env, request);
   }
@@ -85,6 +59,21 @@ async function handleFeed(env, request, ctx) {
 async function handleThumb(env, request, mid) {
   if (request.method !== "GET" && request.method !== "HEAD") return errorJson("method not allowed", 405);
   if (!mid || !/^\d+$/.test(mid)) return errorJson("invalid mid", 400);
+
+  // 1. Ưu tiên phục vụ ảnh bìa chuẩn đã có sẵn trong public/thumbs/
+  if (env.ASSETS) {
+    try {
+      const staticResp = await env.ASSETS.fetch(new Request(new URL(`/thumbs/${mid}.jpg`, request.url)));
+      if (staticResp.ok) {
+        const headers = new Headers(staticResp.headers);
+        headers.set("cache-control", "public, max-age=604800, s-maxage=604800, immutable");
+        headers.set("access-control-allow-origin", "*");
+        return new Response(staticResp.body, { status: 200, headers });
+      }
+    } catch (e) {}
+  }
+
+  // 2. Fallback: Kéo ảnh bìa từ Gateway nếu phim mới chưa có ảnh tĩnh
   const origin = gatewayOrigin(env);
   const chat = channelChatId(env);
   if (origin && chat) {
@@ -104,12 +93,7 @@ async function handleThumb(env, request, mid) {
       console.error(`[worker] dynamic thumb failed: ${e && e.message}`);
     }
   }
-  if (env.ASSETS) {
-    try {
-      const staticResp = await env.ASSETS.fetch(new Request(new URL(`/thumbs/${mid}.jpg`, request.url)));
-      if (staticResp.ok) return staticResp;
-    } catch (e) {}
-  }
+
   return errorJson("thumbnail not found", 404);
 }
 
