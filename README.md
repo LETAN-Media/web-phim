@@ -93,3 +93,17 @@ web-phim/
   curl -s https://phim.callboy76.live/api/health
   curl -s https://phim.callboy76.live/api/feed | head -c 100
   ```
+
+---
+
+## 6. Triển khai Giao diện lên Vercel
+
+Dự án đã được chuẩn hoá với file cấu hình [`vercel.json`](vercel.json):
+* **Cách deploy:**
+  1. Đẩy repo lên GitHub.
+  2. Truy cập [vercel.com](https://vercel.com) -> **Add New Project** -> Chọn repo này.
+  3. Giữ nguyên cấu hình mặc định (Vercel tự động đọc `vercel.json` phục vụ thư mục `public/`).
+  4. Nhấn **Deploy**.
+* **Cơ chế hoạt động:**
+  * Vercel phục vụ 100% giao diện tĩnh (HTML/CSS/JS/Ảnh) qua CDN toàn cầu.
+  * Mọi request xem phim (`/m/...`) và API (`/api/...`) tự động được chuyển tiếp trong suốt về Cloudflare Worker (`phim.callboy76.live`) mà không bị lỗi CORS hay timeout.

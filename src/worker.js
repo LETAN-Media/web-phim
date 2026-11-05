@@ -9,6 +9,9 @@ function jsonResponse(obj, status = 200) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, HEAD, POST, OPTIONS",
+      "access-control-allow-headers": "Content-Type, Range, Authorization",
     },
   });
 }
@@ -142,6 +145,9 @@ async function getFeedItems(env, request) {
 function withVideoSource(resp, source) {
   const headers = new Headers(resp.headers);
   headers.set("x-video-source", source);
+  headers.set("access-control-allow-origin", "*");
+  headers.set("access-control-allow-methods", "GET, HEAD, OPTIONS");
+  headers.set("access-control-expose-headers", "Content-Range, Content-Length, Accept-Ranges, X-Video-Source");
   return new Response(resp.body, { status: resp.status, headers });
 }
 
@@ -400,6 +406,18 @@ async function handleViewsHit(env, request, url) {
 
 export default {
   async fetch(request, env, ctx) {
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "GET, HEAD, POST, OPTIONS",
+          "access-control-allow-headers": "Content-Type, Range, Authorization",
+          "access-control-max-age": "86400",
+        },
+      });
+    }
+
     const url = new URL(request.url);
 
     if (url.pathname === "/api/feed") return handleFeed(env, request);

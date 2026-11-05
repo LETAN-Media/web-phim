@@ -1,0 +1,9 @@
+{
+  "name": "web-phim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Website Xem Phim trực tuyến qua Telegram và Cloudflare",
+  "scripts": {
+    "deploy:cf": "wrangler deploy"
+  }
+}
