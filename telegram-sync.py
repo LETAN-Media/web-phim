@@ -47,6 +47,16 @@ def load_config():
         return {}
 
 
+def target_chat_id():
+    cfg_id = load_config().get("channel_chat_id")
+    if cfg_id:
+        try:
+            return int(cfg_id)
+        except ValueError:
+            pass
+    return -1003952062608
+
+
 def bot_token():
     tok = os.environ.get("BOT_TOKEN", "").strip()
     if tok:
@@ -317,10 +327,14 @@ def poll_loop():
                 # Bot API local khác dải của api.telegram.org, dùng max sẽ kẹt offset cũ.
                 offset = upd.get("update_id", 0) + 1
                 if upd.get("edited_channel_post"):
-                    update_caption(upd["edited_channel_post"])
+                    edit_post = upd["edited_channel_post"]
+                    if (edit_post.get("chat") or {}).get("id") == target_chat_id():
+                        update_caption(edit_post)
                     continue
                 post = upd.get("channel_post")
                 if not post:
+                    continue
+                if (post.get("chat") or {}).get("id") != target_chat_id():
                     continue
                 poster_id = photo_file_id(post)
                 if poster_id:
